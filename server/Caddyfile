@@ -1,0 +1,31 @@
+{
+    auto_https disable_redirects
+}
+https://{$RELAY_DOMAIN}:443 {
+    tls {
+        issuer acme {
+            dir https://acme-v02.api.letsencrypt.org/directory
+            email {$ACME_EMAIL}
+            dns godaddy {env.GODADDY_API_TOKEN}
+            disable_http_challenge
+            disable_tlsalpn_challenge
+            propagation_delay 30s
+            propagation_timeout 10m
+            resolvers 1.1.1.1 8.8.8.8
+        }
+    }
+    @monitor path /admin/monitor
+    handle @monitor {
+        reverse_proxy relay:{$RELAY_PORT:8843}
+    }
+    @dashboard {
+        path /admin /admin/*
+        not path /admin/monitor
+    }
+    handle @dashboard {
+        reverse_proxy relay:8090
+    }
+    handle {
+        reverse_proxy relay:{$RELAY_PORT:8843}
+    }
+}
