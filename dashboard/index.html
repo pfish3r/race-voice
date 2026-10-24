@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Race Voice | Relay dashboard</title><link rel="stylesheet" href="/admin/style.css"><script defer src="/admin/app.js"></script><script defer src="/admin/monitor.js"></script></head>
+<body><main>
+<header><div><p class="eyebrow">RACE CONTROL / REMOTE AUDIO</p><h1>Race Voice<span>Relay dashboard</span></h1></div><div class="badge" id="live">Connecting</div></header>
+<div id="notice" role="status" aria-live="polite">Reading service status...</div>
+<section class="identity"><div><label>Public hostname</label><strong id="hostname">-</strong></div><div><label>Secure WebSocket</label><code id="endpoint">-</code></div><div><label>Relay uptime</label><strong id="uptime">-</strong></div></section>
+<section class="panel">
+<div class="panelhead"><div><p class="eyebrow">BROWSER AUDIO TEST</p><h2>Listen to the relay</h2></div><button id="listen" aria-pressed="false">Listen live</button></div>
+<p id="listenStatus" role="status" aria-live="polite">Listening stopped. Click Listen live to enable browser playback.</p>
+<div class="listencontrols"><label for="listenVolume">Volume</label><input id="listenVolume" type="range" min="0" max="1" step="0.05" value="0.6"><label><input id="listenMute" type="checkbox"> Mute</label><label><input id="listenSpeech" type="checkbox"> Speak announcements using a local browser voice</label></div>
+<label for="listenLevel">Incoming audio level</label><progress id="listenLevel" value="0" max="100"></progress>
+<p id="listenFrames" class="hint">0 audio frames received in this listening session</p>
+<p id="listenAnnouncement" class="hint">Announcement text will appear here. Browser voices can differ from the Windows receiver.</p>
+<p class="hint">Works alongside the Windows receiver, or without it. Playback uses this browser's output device. To avoid an audio loop, test on another device or use an output the sender is not capturing. Stopping or refreshing the page ends listening.</p>
+</section>
+<section class="cards">
+<article><label>MAIN HALL</label><h2>Sender</h2><strong id="sender">-</strong><small id="senderSince">No connection data</small></article>
+<article><label>OTHER ROOM</label><h2>Receiver</h2><strong id="receiver">-</strong><small id="receiverSince">No connection data</small></article>
+<article><label>PLAYBACK</label><h2>Receiver audio</h2><strong id="enabled">-</strong><small>Reports app enable state, not speaker audibility.</small></article>
+<article><label>LIVE TRAFFIC</label><h2>Outgoing audio</h2><strong id="rate">-</strong><small>Payload bandwidth, excluding TLS overhead.</small></article>
+</section>
+<section class="panel">
+<div class="panelhead"><div><p class="eyebrow">LET-S ENCRYPT / GODADDY DNS</p><h2>TLS certificate</h2></div><span class="badge" id="certState">Checking</span></div>
+<div class="certgrid"><dl><dt>Issuer</dt><dd id="issuer">-</dd><dt>Valid from</dt><dd id="issued">-</dd><dt>Expires</dt><dd id="expires">-</dd><dt>Time remaining</dt><dd id="days">-</dd></dl><dl><dt>Certificate hostnames</dt><dd id="names">-</dd><dt>Automatic renewal</dt><dd id="automatic">-</dd><dt>Caddy process</dt><dd id="caddy">-</dd><dt>Last certificate check</dt><dd id="checked">-</dd></dl></div>
+<details><summary>SHA-256 fingerprint</summary><code id="fingerprint">-</code></details>
+<div class="renew"><div><strong id="jobState">Renewal status</strong><p id="jobMessage">-</p><small id="nextAttempt"></small></div><button id="renew" disabled>Renew certificate</button></div>
+<p class="hint">Manual renewal requests a new certificate. After success, Caddy restarts briefly and audio clients reconnect. Limited to one attempt per 24 hours; automatic renewal continues independently.</p>
+</section>
+<section class="panel">
+<div class="panelhead"><div><p class="eyebrow">WINDOWS APP SETUP</p><h2>Client access keys</h2></div></div>
+<p class="hint">Use Sender on the main hall PC and Receiver in the other room. These are your existing keys.</p>
+<div class="keyrow"><label for="senderKey">Sender key</label><input id="senderKey" type="password" readonly placeholder="Hidden" autocomplete="off" aria-label="Sender access key"><button id="senderShow" aria-controls="senderKey" aria-expanded="false">Show</button><button id="senderCopy">Copy</button></div>
+<div class="keyrow"><label for="receiverKey">Receiver key</label><input id="receiverKey" type="password" readonly placeholder="Hidden" autocomplete="off" aria-label="Receiver access key"><button id="receiverShow" aria-controls="receiverKey" aria-expanded="false">Show</button><button id="receiverCopy">Copy</button></div>
+<p id="keyMessage" role="status" aria-live="polite" class="hint">Keys are loaded only when you click Show or Copy. Revealed keys hide after 30 seconds.</p>
+</section>
+<section class="panel" aria-labelledby="clientLogHeading">
+<div class="panelhead"><div><p class="eyebrow">WINDOWS AUDIO DIAGNOSTICS</p><h2 id="clientLogHeading">Windows client log</h2></div><button id="downloadClientLogs">Download log</button></div>
+<div class="logcontrols"><label for="clientLogRole">Show</label><select id="clientLogRole"><option value="all">All clients</option><option value="sender">Sender</option><option value="receiver">Receiver</option></select></div>
+<p class="hint">Announcement IDs link sender and receiver events. Logs show delivery and Windows speech status, not proof of speaker audibility. Only the latest 100 events are held in memory; restarting the relay clears them. Access keys and announcement text are excluded. Requires updated Windows clients.</p>
+<ul id="clientLogs" class="clientlogs"><li>Waiting for client events</li></ul>
+</section>
+<section class="bottom"><div class="panel"><h2>Session statistics</h2><dl id="stats"></dl><p class="hint">Counters reset when the relay restarts. Forwarded frames do not prove successful playback.</p></div><div class="panel"><h2>Recent activity</h2><ul id="events"><li>Waiting for events</li></ul></div></section>
+<footer><span>Race Voice v0.3.6 - Refreshes every 3 seconds</span><span id="updated">Not updated</span></footer>
+</main></body></html>
