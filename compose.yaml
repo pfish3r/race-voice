@@ -1,0 +1,33 @@
+services:
+  relay:
+    build:
+      context: .
+      dockerfile: server/Dockerfile
+    environment:
+      HOST: 0.0.0.0
+      PORT: ${RELAY_PORT:-8843}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Run setup-relay.sh to generate ADMIN_PASSWORD}
+      RELAY_DOMAIN: ${RELAY_DOMAIN:?Set RELAY_DOMAIN}
+      SENDER_KEY: ${SENDER_KEY:?Set SENDER_KEY}
+      RECEIVER_KEY: ${RECEIVER_KEY:?Set RECEIVER_KEY}
+    restart: unless-stopped
+  caddy:
+    build:
+      context: .
+      dockerfile: server/Caddy.Dockerfile
+    ports:
+      - "${RELAY_PORT:-8843}:443"
+    environment:
+      RELAY_DOMAIN: ${RELAY_DOMAIN:?Set RELAY_DOMAIN}
+      RELAY_PORT: ${RELAY_PORT:-8843}
+      ADMIN_PASSWORD: ${ADMIN_PASSWORD:?Run setup-relay.sh to generate ADMIN_PASSWORD}
+      ACME_EMAIL: ${ACME_EMAIL:?Set ACME_EMAIL}
+      GODADDY_API_TOKEN: ${GODADDY_API_TOKEN:?Set GoDaddy production key:secret}
+    volumes:
+      - ./server/Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+    restart: unless-stopped
+volumes:
+  caddy_data:
+  caddy_config:
