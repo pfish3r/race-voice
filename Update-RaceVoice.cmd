@@ -1,0 +1,6 @@
+@echo off
+setlocal DisableDelayedExpansion
+set "RACEVOICE_UPDATER_LOCAL=%~dp0Update-RaceVoice.ps1"
+setlocal EnableDelayedExpansion
+rem Keep launch and exit on one physical line so this file can replace itself safely.
+powershell.exe -NoProfile -ExecutionPolicy Bypass -Command "$ErrorActionPreference='Stop'; $code=1; $temporary=$null; try { $updater=$env:RACEVOICE_UPDATER_LOCAL; if (-not (Test-Path -LiteralPath $updater)) { [Net.ServicePointManager]::SecurityProtocol=[Net.SecurityProtocolType]::Tls12; $temporary=Join-Path ([IO.Path]::GetTempPath()) ('RaceVoice-Updater-'+[guid]::NewGuid().ToString('N')+'.ps1'); Write-Host 'Downloading the RaceVoice updater...'; Invoke-WebRequest -UseBasicParsing -Uri 'https://raw.githubusercontent.com/pfish3r/race-voice/main/Update-RaceVoice.ps1' -OutFile $temporary -TimeoutSec 120; $updater=$temporary }; & $updater; $code=$LASTEXITCODE } catch { Write-Host ('Updater could not run: '+$_.Exception.Message) -ForegroundColor Yellow }; if ($temporary) { Remove-Item -LiteralPath $temporary -Force -ErrorAction SilentlyContinue }; if ($code -ne 0) { Write-Host 'RaceVoice update did not complete. Read the error above.' -ForegroundColor Yellow }; if (-not [Console]::IsInputRedirected) { [void](Read-Host 'Press Enter to close') }; exit $code" & exit /b !errorlevel!

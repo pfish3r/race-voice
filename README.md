@@ -34,6 +34,14 @@ For a portable executable, run **Build-EXE.cmd** and copy the entire dist/RaceVo
 
 Auto-connect is optional. It requires a saved address, usable protected key and available saved devices. System-send and always-on microphone switches start off.
 
+## Windows updates
+
+Close Race Voice, then double-click **Update-RaceVoice.cmd**. It downloads the latest GitHub source ZIP, validates/extracts it and installs to **C:\\apps\\RaceVoice**. The launcher can run from any folder; if its PowerShell helper is missing, it downloads it automatically. Future copies of both updater files are included at the project root.
+
+The updater preserves your saved settings/access keys, local .env, virtual environment and existing EXE builds. It backs up files before replacing them under C:\\apps\\RaceVoice\\update-backups. It refreshes Python dependencies when requirements change or the virtual environment is missing. Python 3.12 x64 with the Python launcher is required. If C:\\apps requires elevated permissions, right-click the CMD and select Run as administrator.
+
+Start the updated app with Start-Race-Voice.cmd. This updates source installations; use Build-EXE.cmd to rebuild an existing EXE.
+
 ## Linux relay setup
 
 Requires Docker Engine and Docker Compose, a public hostname, and DNS hosted by GoDaddy.
@@ -66,7 +74,7 @@ No audio is recorded by the relay. TLS protects transport, but the relay can acc
 python -m unittest discover -s tests -v
 node tests/test_monitor.cjs
 node tests/test_client_logs.cjs
-node tests/test_metrics.cjs
+node tests/test_metrics.cjs\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_windows_updater.ps1
 ~~~
 
 Tests cover authentication/forwarding, portal controls/log sanitization, playback writes, speech queue/STOP/deduplication and native Tk layouts. Audio/SAPI tests use fakes; passing does not prove audibility. Verify Docker/certificate provisioning, hardware playback and EXE packaging in the deployment environment.

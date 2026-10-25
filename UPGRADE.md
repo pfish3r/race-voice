@@ -2,7 +2,15 @@
 
 ## Windows
 
-Close Race Voice, replace the whole source folder (including speech.py, playback.py and modern_widgets.py), then run Start-Race-Voice.cmd. If using an EXE, rebuild with Build-EXE.cmd. Copying source does not update an EXE.
+Close Race Voice and double-click Update-RaceVoice.cmd. It fetches the latest source ZIP from GitHub and installs into C:\\apps\\RaceVoice, including updated copies of both updater files. If you only have the CMD, it automatically downloads its PowerShell helper. It does not require Git.
+
+The updater validates/extracts into a temporary folder before touching the installation, rejects unsafe ZIP paths/links, preserves local configuration and creates a timestamped source backup under update-backups. Failed source copies are rolled back. If Python dependency installation fails, source is restored but dependencies may have partially changed; correct the reported error and rerun the updater. Temporary download/extraction files are cleaned automatically.
+
+Python 3.12 x64 with the Python launcher is required. Dependencies are installed for a missing virtual environment or changed requirements. Right-click the CMD and Run as administrator if access to C:\\apps is denied. The updater asks you to close an identified running RaceVoice process instead of stopping it.
+
+Launch the updated installation using C:\\apps\\RaceVoice\\Start-Race-Voice.cmd. If using an EXE, rebuild with Build-EXE.cmd. Source updates do not replace existing EXE builds.
+
+For an offline ZIP or an alternate absolute local folder, run the PowerShell helper with -ArchivePath or -InstallPath. -SkipDependencies is available for source-only/offline testing; normal updates should leave it off. Existing user files are retained; the updater does not delete obsolete files.
 
 Settings and DPAPI-protected keys live under %APPDATA%/RaceVoice. Keys are tied to the Windows account and should not be copied to another PC.
 
