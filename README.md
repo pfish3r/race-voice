@@ -14,9 +14,9 @@ Both PCs make outbound connections to the relay, so they work across isolated gu
 - Remembered mode, address, devices and templates; optional startup auto-connect.
 - Configurable WebSocket port, default 8843.
 - Linux Docker relay with Let's Encrypt certificates using GoDaddy DNS validation and automatic renewal.
-- HTTPS dashboard with connections/traffic, client logs, keys, certificate status, renewal and opt-in browser listening.
+- HTTPS dashboard with traffic/event graphs, one hour of server-retained history, per-container CPU/memory, client logs, keys, certificate status, renewal and opt-in browser listening.
 
-The Windows client is **v0.5.0**. The relay/dashboard retain their **v0.3.6** version label; interface-only updates do not require a relay rebuild.
+The Windows client is **v0.5.0**. The relay/dashboard are **v0.3.7**. This metrics update requires rebuilding both Linux containers; the Windows client is unchanged.
 
 ## Windows setup
 
@@ -66,6 +66,7 @@ No audio is recorded by the relay. TLS protects transport, but the relay can acc
 python -m unittest discover -s tests -v
 node tests/test_monitor.cjs
 node tests/test_client_logs.cjs
+node tests/test_metrics.cjs
 ~~~
 
 Tests cover authentication/forwarding, portal controls/log sanitization, playback writes, speech queue/STOP/deduplication and native Tk layouts. Audio/SAPI tests use fakes; passing does not prove audibility. Verify Docker/certificate provisioning, hardware playback and EXE packaging in the deployment environment.

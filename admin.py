@@ -1,5 +1,6 @@
 """Private dashboard; client keys are available only via authenticated on-demand requests."""
-import base64, hmac, json, os, time, urllib.request, urllib.error
+import base64, hmac, json, os, time, math, urllib.request, urllib.error
+from urllib.parse import parse_qs
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -50,7 +51,7 @@ def make_handler(relay, password, origin):
             if not self.auth():
                 return
             path = self.path.split("?")[0]
-            assets = {"/admin":"index.html", "/admin/":"index.html", "/admin/app.js":"app.js", "/admin/style.css":"style.css", "/admin/monitor.js":"monitor.js"}
+            assets = {"/admin":"index.html", "/admin/":"index.html", "/admin/app.js":"app.js", "/admin/style.css":"style.css", "/admin/monitor.js":"monitor.js", "/admin/metrics.js":"metrics.js"}
             if path in assets:
                 file = Path(__file__).parent / "dashboard" / assets[path]
                 kind = {"html":"text/html; charset=utf-8", "js":"application/javascript", "css":"text/css"}[file.suffix[1:]]
@@ -63,11 +64,22 @@ def make_handler(relay, password, origin):
                     return self.reply(200, {"ticket":relay.issue_monitor_ticket(), "expires_in":30})
                 except ValueError as e:
                     return self.reply(429, {"error":str(e)})
+            if path == "/admin/api/metrics":
+                query = parse_qs(self.path.partition("?")[2], keep_blank_values=True)
+                if "after" not in query:
+                    return self.reply(200, relay.metrics.snapshot())
+                try:
+                    after = float(query["after"][0])
+                    if not math.isfinite(after) or after < 0:
+                        raise ValueError()
+                except ValueError:
+                    return self.reply(400, {"error":"Invalid metrics timestamp"})
+                return self.reply(200, relay.metrics.snapshot(after=after))
             if path == "/admin/api/status":
                 code, cert = controller()
                 return self.reply(200, {"relay":relay.snapshot(), "certificate":cert,
                     "hostname":os.environ["RELAY_DOMAIN"], "port":int(os.getenv("PORT","8843")),
-                    "version":"0.3.6", "controller_available":code == 200})
+                    "version":"0.3.7", "controller_available":code == 200})
             self.reply(404, {"error":"Not found"})
         def do_POST(self):
             if not self.auth():

@@ -16,10 +16,23 @@ class Relay:
         self.connected_at = {}
         self.connections = {"sender":0,"receiver":0}
         self.stats = {"audio_bytes_in":0,"audio_bytes_out":0,"frames_forwarded":0,"frames_dropped":0,"announcements":0,"auth_rejections":0,"monitor_bytes_out":0,"monitor_frames_dropped":0}
+        self.stats.update(payload_bytes_in=0, payload_bytes_out=0, messages_in=0,
+                          messages_out=0, audio_frames_in=0, events_received=0,
+                          events_forwarded=0, announcements_received=0,
+                          stops_received=0, monitor_events_out=0, monitor_events_dropped=0,
+                          speech_completed=0, speech_errors=0)
         self.last_audio = None
         self.events = deque(maxlen=30)
         self.client_logs = deque(maxlen=100)
         self.client_log_rates = {}
+
+    def received(self, message):
+        self.stats["messages_in"] += 1
+        self.stats["payload_bytes_in"] += len(message if isinstance(message, bytes) else message.encode("utf-8"))
+
+    def sent(self, message):
+        self.stats["messages_out"] += 1
+        self.stats["payload_bytes_out"] += len(message if isinstance(message, bytes) else message.encode("utf-8"))
 
     def snapshot(self):
         return {"uptime_seconds":round(time.time()-self.started),
@@ -70,6 +83,9 @@ class Relay:
         version = data.get("version")
         if isinstance(version, str) and re.fullmatch(r"[0-9]{1,3}(?:\.[0-9]{1,3}){1,3}", version) and safe(version):
             item["version"] = version
+        if role == "receiver" and data["event"] in ("speech_completed", "speech_error"):
+            key = "speech_completed" if data["event"] == "speech_completed" else "speech_errors"
+            self.stats[key] += 1
         self.client_logs.appendleft(item)
         return True
 
@@ -92,8 +108,9 @@ class Relay:
     def broadcast_monitor(self, message):
         for q in list(self.monitors.values()):
             if q.full():
-                q.get_nowait()
-                self.stats["monitor_frames_dropped"] += 1
+                _, dropped = q.get_nowait()
+                key = "monitor_frames_dropped" if isinstance(dropped, bytes) else "monitor_events_dropped"
+                self.stats[key] += 1
             q.put_nowait((time.monotonic(), message))
 
     async def monitor(self, ws, ticket):
@@ -111,9 +128,13 @@ class Relay:
             while True:
                 stamp, message = await q.get()
                 if time.monotonic()-stamp > .25:
-                    self.stats["monitor_frames_dropped"] += 1
+                    key = "monitor_frames_dropped" if isinstance(message, bytes) else "monitor_events_dropped"
+                    self.stats[key] += 1
                     continue
                 await asyncio.wait_for(ws.send(message), .5)
+                self.sent(message)
+                if isinstance(message, str):
+                    self.stats["monitor_events_out"] += 1
                 if isinstance(message, bytes):
                     self.stats["monitor_bytes_out"] += len(message)-1
         async def read():
@@ -145,6 +166,7 @@ class Relay:
         for peer in list(self.peers.values()):
             try:
                 await asyncio.wait_for(peer.send(message), 1)
+                self.sent(message)
             except (ConnectionClosed, TimeoutError):
                 pass
 
@@ -171,6 +193,7 @@ class Relay:
             self.event(role.capitalize()+" connected")
             await self.status()
             async for message in ws:
+                self.received(message)
                 if isinstance(message, str):
                     data = json.loads(message)
                     if isinstance(data, dict) and data.get("type") == "diagnostic":
@@ -196,13 +219,20 @@ class Relay:
                         await ws.close(1008, "Invalid announcement")
                         break
                 if isinstance(message, bytes):
+                    self.stats["audio_frames_in"] += 1
                     self.stats["audio_bytes_in"] += len(message)-1
                     self.last_audio = time.time()
+                if isinstance(message, str):
+                    self.stats["events_received"] += 1
+                    self.stats["announcements_received" if data["type"] == "say" else "stops_received"] += 1
                 self.broadcast_monitor(message)
                 receiver = self.peers.get("receiver")
                 if receiver and self.enabled:
                     try:
                         await asyncio.wait_for(receiver.send(message), .5)
+                        self.sent(message)
+                        if isinstance(message, str):
+                            self.stats["events_forwarded"] += 1
                         if isinstance(message, bytes):
                             self.stats["audio_bytes_out"] += len(message)-1
                             self.stats["frames_forwarded"] += 1
@@ -233,6 +263,9 @@ async def main():
     if len(admin_password) < 24 or admin_password in (sender, receiver):
         raise SystemExit("Set a separate ADMIN_PASSWORD with at least 24 characters")
     relay = Relay(sender, receiver)
+    from metrics import Metrics
+    relay.metrics = Metrics(relay)
+    relay.metrics.start()
     from admin import start_admin
     threading.Thread(target=start_admin, args=(relay,), daemon=True).start()
     async with serve(relay.handler, os.getenv("HOST", "127.0.0.1"), int(os.getenv("PORT", "8843")),
