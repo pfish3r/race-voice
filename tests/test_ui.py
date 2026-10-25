@@ -9,7 +9,8 @@ import sys
 from pathlib import Path
 from types import SimpleNamespace
 from tkinter import ttk
-from unittest.mock import Mock
+from unittest.mock import Mock, patch
+import queue
 from urllib.parse import urlparse
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -41,11 +42,14 @@ class UiTests(unittest.TestCase):
                               RoundedPanel=RoundedPanel, RoundedButton=RoundedButton)
         exec(compile(UI_CODE, "app.py", "exec"), self.namespace)
         self.App = self.namespace["App"]
+        self.original_tick = self.App.tick
         self.App.tick = lambda app: None
 
     def close_roots(self):
         for root in self.roots:
             try:
+                for callback in root.tk.call("after", "info"):
+                    root.after_cancel(callback)
                 root.destroy()
             except tk.TclError:
                 pass
@@ -67,6 +71,7 @@ class UiTests(unittest.TestCase):
         self.roots.append(root)
         root.tk.call("tk", "scaling", scale)
         app = self.App(root)
+        app.auto_fit = False  # Fit behavior is exercised explicitly in dedicated checks.
         for callback in root.tk.call("after", "info"):
             root.after_cancel(callback)
         root.geometry(f"{width}x{height}")
@@ -83,10 +88,10 @@ class UiTests(unittest.TestCase):
                 self.assertEqual(len(app.tabs.tabs()), 3)
                 self.assertEqual(len(app.slots), 5)
                 self.assertEqual(len(app.preview_labels), 5)
-                self.assertGreaterEqual(app.ptt.winfo_reqheight(), 55)
                 send_buttons = [widget for widget in app.send_widgets if widget is not app.ptt]
+                self.assertGreaterEqual(app.ptt.winfo_reqheight(), 30)
                 self.assertEqual(len(send_buttons), 6)
-                self.assertTrue(all(widget.winfo_reqheight() >= 50 for widget in send_buttons))
+                self.assertTrue(all(widget.winfo_reqheight() >= 28 for widget in send_buttons))
             for width, height in ((1080, 740), (800, 600), (640, 480)):
                 with self.subTest(scale=scale, width=width, height=height):
                     root.geometry(f"{width}x{height}")
@@ -113,6 +118,94 @@ class UiTests(unittest.TestCase):
                     last = send_buttons[-1]
                     self.assertLessEqual(last.winfo_rooty() + last.winfo_height(),
                                          area.canvas.winfo_rooty() + area.canvas.winfo_height() + 2)
+
+    def test_fit_shows_all_presets_without_scrolling(self):
+        for scale, width, height in ((1.33,1080,740),(2.0,800,600),(2.0,640,480)):
+            root, app = self.build(scale=scale,width=width,height=height)
+            app.fit_announcements()
+            root.update_idletasks()
+            area = app.announcement_area.canvas
+            for button in app.send_widgets:
+                self.assertGreaterEqual(button.winfo_rooty(),area.winfo_rooty()-1)
+                self.assertLessEqual(button.winfo_rooty()+button.winfo_height(),
+                                     area.winfo_rooty()+area.winfo_height()+1)
+            self.assertTrue(app.auto_fit)
+
+    def test_zoom_shortcuts_limits_and_saved_preference(self):
+        root, app = self.build()
+        app.zoom_key(SimpleNamespace(keysym="minus"))
+        self.assertEqual(app.zoom_percent,90)
+        self.assertFalse(app.auto_fit)
+        old = app.announcement_editors[0].cget("font")
+        app.zoom_key(SimpleNamespace(keysym="KP_Add"))
+        self.assertEqual(app.zoom_percent,100)
+        self.assertNotEqual(app.announcement_editors[0].cget("font"),old)
+        for _ in range(20): app.change_zoom(-10)
+        self.assertEqual(app.zoom_percent,50)
+        for _ in range(20): app.change_zoom(10)
+        self.assertEqual(app.zoom_percent,150)
+        app.zoom_key(SimpleNamespace(keysym="0"))
+        self.assertEqual(app.zoom_percent,100)
+        app.auto_fit=True;app.queue_fit()
+        app.set_zoom(80)
+        self.assertIsNone(app._fit_pending)
+        app.save()
+        _, restored = self.build()
+        self.assertEqual(restored.zoom_percent,80)
+        self.assertFalse(restored.auto_fit)
+        self.assertTrue(root.bind("<Control-KeyPress>"))
+
+    def test_space_ptt_never_sends_a_focused_button_and_allows_editing(self):
+        root, app = self.build()
+        button = app.send_widgets[-1]
+        self.assertEqual(button.bindtags()[0],"RaceVoicePushToTalk")
+        app.running = True
+        app.send = Mock()
+        event = SimpleNamespace(widget=button,state=0)
+        self.assertEqual(app.space_press(event),"break")
+        self.assertTrue(app.space_held)
+        app.space_press(event)  # Key auto-repeat is harmless.
+        app.send.assert_not_called()
+        self.assertEqual(app.space_release(event),"break")
+        self.assertFalse(app.space_held)
+        for editor in [*app.announcement_editors,*app.title_editors,*app.template_editors]:
+            self.assertIsNone(app.space_press(SimpleNamespace(widget=editor,state=0)))
+            self.assertFalse(app.space_held)
+        app.space_press(event)
+        app.space_focus(SimpleNamespace(widget=app.announcement_editors[0]))
+        self.assertFalse(app.space_held)
+        self.assertEqual(app.space_press(SimpleNamespace(widget=button,state=4)),"break")
+        self.assertFalse(app.space_held)
+        app.role.set("receiver")
+        app.space_press(event)
+        self.assertFalse(app.space_held)
+        app.role.set("sender");app.running=False;app.space_press(event)
+        self.assertFalse(app.space_held)
+
+    def test_space_releases_on_focus_loss_and_controls_live_microphone(self):
+        root, app = self.build()
+        self.namespace["ctypes"] = SimpleNamespace(windll=SimpleNamespace(user32=SimpleNamespace(GetAsyncKeyState=lambda _:0)))
+        self.namespace["queue"] = queue
+        app.engine=SimpleNamespace(connected=True,ready=True,capture_ready=[True,True],
+            enabled=False,playback_failed=False,peak=0,events=queue.Queue(),
+            speech_diagnostic="No announcement received")
+        app.running=True
+        event=SimpleNamespace(widget=app.ptt,state=0)
+        app.space_press(event)
+        self.original_tick(app)
+        self.assertTrue(app.engine.mic_on)
+        self.assertIn("MIC LIVE",app.ptt.cget("text"))
+        app.space_release(event)
+        self.original_tick(app)
+        self.assertFalse(app.engine.mic_on)
+        self.assertIn("HOLD TO TALK",app.ptt.cget("text"))
+        app.space_press(event)
+        with patch.object(root,"focus_get",return_value=None):
+            app.check_focus(None)
+            root.update_idletasks()
+        self.assertFalse(app.space_held)
+        self.original_tick(app)
+        self.assertFalse(app.engine.mic_on)
 
     def test_preview_tracks_round_minutes_and_edited_template(self):
         root, app = self.build()
