@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Race Voice | Relay dashboard</title><link rel="stylesheet" href="/admin/style.css"><script defer src="/admin/app.js"></script><script defer src="/admin/monitor.js"></script></head>
+<html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Race Voice | Relay dashboard</title><link rel="stylesheet" href="/admin/style.css"><script defer src="/admin/app.js"></script><script defer src="/admin/monitor.js"></script><script defer src="/admin/metrics.js"></script></head>
 <body><main>
 <header><div><p class="eyebrow">RACE CONTROL / REMOTE AUDIO</p><h1>Race Voice<span>Relay dashboard</span></h1></div><div class="badge" id="live">Connecting</div></header>
 <div id="notice" role="status" aria-live="polite">Reading service status...</div>
@@ -18,6 +18,31 @@
 <article><label>OTHER ROOM</label><h2>Receiver</h2><strong id="receiver">-</strong><small id="receiverSince">No connection data</small></article>
 <article><label>PLAYBACK</label><h2>Receiver audio</h2><strong id="enabled">-</strong><small>Reports app enable state, not speaker audibility.</small></article>
 <article><label>LIVE TRAFFIC</label><h2>Outgoing audio</h2><strong id="rate">-</strong><small>Payload bandwidth, excluding TLS overhead.</small></article>
+</section>
+<section class="panel" aria-labelledby="metricsHeading">
+<div class="panelhead"><div><p class="eyebrow">TRAFFIC AND CONTAINER HEALTH</p><h2 id="metricsHeading">Usage graphs</h2></div><button id="downloadMetrics" disabled>Download metrics</button></div>
+<div class="logcontrols"><label for="metricsRange">Show last</label><select id="metricsRange"><option value="5">5 minutes</option><option value="15" selected>15 minutes</option><option value="60">1 hour</option></select></div>
+<p id="metricsStatus" class="hint" role="status">Loading measurements...</p>
+<div class="cards metric-cards">
+<article><label>PAYLOAD RECEIVED</label><strong id="dataIn">-</strong><small>Sender and receiver application data</small></article>
+<article><label>PAYLOAD SENT</label><strong id="dataOut">-</strong><small>Clients and browser listeners combined</small></article>
+<article><label>EVENTS RECEIVED</label><strong id="eventsIn">-</strong><small>Valid announcement and STOP commands</small></article>
+<article><label>EVENTS FORWARDED</label><strong id="eventsOut">-</strong><small>Sent to the Windows receiver</small></article>
+</div>
+<div class="container-cards">
+<article><h3>Relay container</h3><dl><dt>CPU</dt><dd id="relayCpu">-</dd><dt>Memory</dt><dd id="relayMemory">-</dd></dl><small id="relayLimit">-</small></article>
+<article><h3>Caddy container</h3><dl><dt>CPU</dt><dd id="caddyCpu">-</dd><dt>Memory</dt><dd id="caddyMemory">-</dd></dl><small id="caddyLimit">-</small></article>
+</div>
+<div class="chart-grid-layout">
+<figure><figcaption>Bandwidth <small>Application payload, kbps</small></figcaption><div id="bandwidthChart"></div></figure>
+<figure><figcaption>Data used <small>Cumulative MiB since relay restart</small></figcaption><div id="dataChart"></div></figure>
+<figure><figcaption>Events received and forwarded <small>Announcements and STOP commands per minute</small></figcaption><div id="eventChart"></div></figure>
+<figure><figcaption>Audio drops <small>Frames per minute</small></figcaption><div id="dropChart"></div></figure>
+<figure><figcaption>Container CPU <small>100% means one fully used CPU core</small></figcaption><div id="cpuChart"></div></figure>
+<figure><figcaption>Container memory <small>MiB including charged file cache</small></figcaption><div id="memoryChart"></div></figure>
+</div>
+<details><summary>Detailed event and audio counters</summary><dl id="metricTotals"></dl></details>
+<p class="hint">Sampled every 5 seconds. The server keeps up to one hour of history while the portal is closed. Counters and history reset on relay restart. Payload totals exclude authentication, WebSocket framing, TLS, dashboard HTTP and certificate traffic, so they are not your hosting provider's billable usage. Sent includes browser listening. Receiver frame drops include audio skipped while the receiver is disabled or disconnected. Forwarding is not confirmation of playback; speech completion is reported separately by updated Windows clients. Container memory includes file cache and may differ from Docker CLI figures. Missing accounting is shown as unavailable.</p>
 </section>
 <section class="panel">
 <div class="panelhead"><div><p class="eyebrow">LET-S ENCRYPT / GODADDY DNS</p><h2>TLS certificate</h2></div><span class="badge" id="certState">Checking</span></div>
@@ -40,5 +65,5 @@
 <ul id="clientLogs" class="clientlogs"><li>Waiting for client events</li></ul>
 </section>
 <section class="bottom"><div class="panel"><h2>Session statistics</h2><dl id="stats"></dl><p class="hint">Counters reset when the relay restarts. Forwarded frames do not prove successful playback.</p></div><div class="panel"><h2>Recent activity</h2><ul id="events"><li>Waiting for events</li></ul></div></section>
-<footer><span>Race Voice v0.3.6 - Refreshes every 3 seconds</span><span id="updated">Not updated</span></footer>
+<footer><span>Race Voice relay v0.3.7 - Refreshes every 3 seconds</span><span id="updated">Not updated</span></footer>
 </main></body></html>
