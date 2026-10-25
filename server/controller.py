@@ -2,6 +2,9 @@
 import hashlib, hmac, json, os, signal, socket, ssl, subprocess, tempfile, threading, time
 from pathlib import Path
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
+from metrics import ContainerUsage
+
+container_usage = ContainerUsage()
 
 STATE = Path("/data/racevoice-renew.json")
 lock = threading.RLock()
@@ -125,7 +128,12 @@ class Handler(BaseHTTPRequestHandler):
         return True
     def do_GET(self):
         if self.auth():
-            self.respond(200,status()) if self.path=="/status" else self.respond(404,{})
+            if self.path == "/metrics":
+                self.respond(200, container_usage.sample())
+            elif self.path == "/status":
+                self.respond(200, status())
+            else:
+                self.respond(404, {})
     def do_POST(self):
         if self.auth():
             code,data=request_renewal() if self.path=="/renew" else (404,{})

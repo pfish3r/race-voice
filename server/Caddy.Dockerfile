@@ -8,4 +8,5 @@ RUN apk add --no-cache python3
 COPY --from=builder /usr/bin/caddy /usr/bin/caddy
 COPY --from=builder /usr/bin/racevoice-renew /usr/bin/racevoice-renew
 COPY server/controller.py /opt/racevoice/controller.py
+COPY metrics.py /opt/racevoice/metrics.py
 CMD ["python3", "/opt/racevoice/controller.py"]
