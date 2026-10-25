@@ -103,6 +103,47 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(snapshot["connections"]["sender"],1)
         self.assertNotIn("s"*32,json.dumps(snapshot))
 
+    async def test_metrics_distinguish_received_events_from_forwarding_and_utf8_payload(self):
+        sender = await self.add("sender")
+        receiver = await self.add("receiver")
+        sender.push({"type":"say","text":"not forwarded"})
+        await self.settle()
+        self.assertEqual(self.relay.stats["events_received"],1)
+        self.assertEqual(self.relay.stats["events_forwarded"],0)
+        receiver.push({"type":"enabled","value":True})
+        await self.settle()
+        command = json.dumps({"type":"say","text":"Pratique caf\u00e9"}, ensure_ascii=False)
+        sender.push(command)
+        await self.settle()
+        sender.push({"type":"stop"})
+        await self.settle()
+        sender.push(b"\0"+b"\0"*1920)
+        await self.settle()
+        stats = self.relay.stats
+        self.assertEqual(stats["events_received"],3)
+        self.assertEqual(stats["events_forwarded"],2)
+        self.assertEqual(stats["announcements_received"],2)
+        self.assertEqual(stats["announcements"],1)
+        self.assertEqual(stats["stops_received"],1)
+        self.assertEqual(stats["audio_frames_in"],1)
+        self.assertEqual(stats["payload_bytes_out"],sum(len(m.encode("utf-8") if isinstance(m,str) else m) for p in (sender,receiver) for m in p.sent))
+        self.assertEqual(stats["messages_out"],len(sender.sent)+len(receiver.sent))
+        self.assertIn(command,receiver.sent)
+        self.assertGreater(stats["payload_bytes_in"],stats["audio_bytes_in"])
+
+    async def test_unsuccessful_send_not_counted_as_forwarded_event(self):
+        from unittest.mock import AsyncMock
+        sender = await self.add("sender")
+        receiver = await self.add("receiver")
+        receiver.push({"type":"enabled","value":True})
+        await self.settle()
+        receiver.send = AsyncMock(side_effect=TimeoutError)
+        sender.push({"type":"say","text":"test"})
+        await self.settle()
+        self.assertEqual(self.relay.stats["events_received"],1)
+        self.assertEqual(self.relay.stats["events_forwarded"],0)
+        self.assertEqual(self.relay.stats["announcements"],0)
+
     async def test_browser_can_listen_without_receiver(self):
         sender = await self.add("sender")
         ticket = self.relay.issue_monitor_ticket()
