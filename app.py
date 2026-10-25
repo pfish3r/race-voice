@@ -1,4 +1,4 @@
-"""Race Voice v0.5.0. Windows 11 desktop prototype."""
+"""Race Voice v0.5.1. Windows 11 desktop prototype."""
 import asyncio
 import base64
 import ctypes
@@ -69,7 +69,7 @@ class Engine:
         self.events.put(text)
 
     def trace(self, event, **fields):
-        data = {"type": "diagnostic", "event": event, "version": "0.5.0", **fields}
+        data = {"type": "diagnostic", "event": event, "version": "0.5.1", **fields}
         put_latest(self.diagnostics, data)
         logger = logging.getLogger("racevoice.client")
         try:
@@ -346,18 +346,28 @@ class App:
         self.root = root
         self.engine = Engine()
         self.running = self.held = False
+        self.space_held = False
+        self._fitting = False
+        self._fit_pending = None
+        self._closed = False
         try:
             self.settings = json.loads(CONFIG.read_text(encoding="utf-8"))
             if not isinstance(self.settings, dict):
                 self.settings = {}
         except (OSError, ValueError):
             self.settings = {}
-        root.title("Race Voice | v0.5.0")
+        root.title("Race Voice | v0.5.1")
         root.geometry(f"{min(1080, root.winfo_screenwidth()-80)}x{min(860, root.winfo_screenheight()-120)}")
         root.minsize(640, 480)
         root.option_add("*Font", ("Segoe UI", 11))
+        try:
+            self.zoom_percent = max(50, min(150, int(self.settings.get("zoom", 100))))
+        except (ValueError, TypeError):
+            self.zoom_percent = 100
+        self.auto_fit = bool(self.settings.get("auto_fit", True))
+        self.zoom_text = tk.StringVar(value=f"{self.zoom_percent}%")
         root.configure(background="#f4f5fa")
-        style = ttk.Style()
+        style = ttk.Style(self.root)
         style.theme_use("clam")
         style.configure(".", background="#ffffff", foreground="#24283e", font=("Segoe UI", 11))
         style.configure("TFrame", background="#ffffff")
@@ -372,7 +382,7 @@ class App:
         style.map("TEntry", bordercolor=[("focus", "#9274dc")])
         style.configure("TCombobox", padding=7, fieldbackground="#f8f9fc", bordercolor="#e2e5ef",
                         arrowcolor="#7954c6", arrowsize=16)
-        style.configure("Title.TLabel", font=("Segoe UI", 23, "bold"))
+        style.configure("Title.TLabel", font=("Segoe UI", 18, "bold"))
         style.configure("CardTitle.TLabel", font=("Segoe UI", 13, "bold"))
         style.configure("Status.TLabel", foreground="#646d84", font=("Segoe UI", 10))
         style.configure("Hint.TLabel", background="#f4f5fa", foreground="#777f96", font=("Segoe UI", 10))
@@ -382,7 +392,7 @@ class App:
                         foreground="#67519f", background="#ffffff", padding=(8, 5))
         style.configure("Vertical.TScrollbar", background="#e0dced", troughcolor="#f4f5fa",
                         borderwidth=0, arrowsize=12)
-        style.configure("TProgressbar", background="#9270df", troughcolor="#e9e5f4",
+        style.configure("Horizontal.TProgressbar", background="#9270df", troughcolor="#e9e5f4",
                         borderwidth=0, thickness=5)
         style.configure("Page.TNotebook", background="#f4f5fa", borderwidth=0, tabmargins=0)
         style.layout("Page.TNotebook.Tab", [])
@@ -435,7 +445,7 @@ class App:
 
         self.shell = ttk.Frame(root, style="Page.TFrame")
         self.shell.pack(fill="both", expand=True)
-        self.sidebar = tk.Frame(self.shell, background="#ffffff", width=210)
+        self.sidebar = tk.Frame(self.shell, background="#ffffff", width=180)
         self.sidebar.pack(side="left", fill="y")
         self.sidebar.pack_propagate(False)
         self.sidebar_brand = tk.Label(self.sidebar, text="RV", font=("Segoe UI", 23, "bold"),
@@ -455,27 +465,38 @@ class App:
                                    command=lambda i=index: self.select_page(i))
             button.pack(fill="x", padx=12, pady=5)
             self.nav_buttons.append(button)
-        self.sidebar_version = tk.Label(self.sidebar, text="Race Voice\nv0.5.0", font=("Segoe UI", 9),
+        self.sidebar_version = tk.Label(self.sidebar, text="Race Voice\nv0.5.1", font=("Segoe UI", 9),
                                         justify="left", background="#ffffff", foreground="#9ca2b3")
         self.sidebar_version.pack(side="bottom", anchor="w", padx=22, pady=20)
         self.workspace = ttk.Frame(self.shell, style="Page.TFrame")
         self.workspace.pack(side="left", fill="both", expand=True)
-        header = ttk.Frame(self.workspace, padding=(22, 16))
-        header.pack(fill="x", padx=16, pady=(16, 0))
+        header = ttk.Frame(self.workspace, padding=(14, 8))
+        header.pack(fill="x", padx=16, pady=(8, 0))
         header.columnconfigure(0, weight=1)
         self.page_title = ttk.Label(header, text="Announcements", style="Title.TLabel")
         self.page_title.grid(row=0, column=0, sticky="w")
         self.connect_button = RoundedButton(header, text="Connect", font=("Segoe UI", 11, "bold"),
                                             padding=(20, 11), background="#ffffff", command=self.toggle)
-        self.connect_button.grid(row=0, column=1, rowspan=2, padx=(12, 0), sticky="e")
+        self.connect_button.grid(row=0, column=1, padx=(12, 0), sticky="e")
         self.mode_label = ttk.Label(header, style="HeaderHint.TLabel")
         self.mode_label.grid(row=1, column=0, sticky="w", pady=(4, 0))
+        zoom_controls = ttk.Frame(header)
+        zoom_controls.grid(row=1, column=1, sticky="e", pady=(3, 0))
+        style.configure("Zoom.TButton", padding=(4, 2), font=("Segoe UI", 9))
+        for text, command, width in (("-", lambda: self.change_zoom(-10), 2),
+                                     (None, lambda: self.set_zoom(100), 5),
+                                     ("+", lambda: self.change_zoom(10), 2),
+                                     ("Fit", self.fit_announcements, 3)):
+            options = {"textvariable":self.zoom_text} if text is None else {"text":text}
+            ttk.Button(zoom_controls, command=command, width=width,
+                       style="Zoom.TButton", **options).pack(side="left", padx=1)
+        root.bind("<Control-KeyPress>", self.zoom_key, add="+")
         status_label = ttk.Label(header, textvariable=self.status, style="Status.TLabel", wraplength=700)
-        status_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(10, 0))
+        status_label.grid(row=2, column=0, columnspan=2, sticky="w", pady=(4, 0))
         header.bind("<Configure>", lambda event: status_label.configure(wraplength=max(220, event.width-44)))
 
         self.tabs = ttk.Notebook(self.workspace, style="Page.TNotebook")
-        self.tabs.pack(fill="both", expand=True, padx=16, pady=(10, 16))
+        self.tabs.pack(fill="both", expand=True, padx=12, pady=(6, 8))
         operation_area = ScrollArea(self.tabs, padding=0)
         operation = operation_area.body
         connection_area = ScrollArea(self.tabs, padding=0)
@@ -484,21 +505,23 @@ class App:
         self.tabs.add(connection_area, text="Connection")
         self.tabs.add(audio_area, text="Audio setup")
         self.tabs.bind("<<NotebookTabChanged>>", self.navigation_changed)
-        root.bind("<Configure>", self.reflow_sidebar, add="+")
+        root.bind("<Configure>", self.window_resized, add="+")
+        root.bind("<Destroy>", self.window_destroyed, add="+")
 
         summary = ttk.Frame(operation, style="Page.TFrame")
-        summary.pack(fill="x", pady=(0, 14))
+        summary.pack(fill="x", pady=(0, 6))
+        self.summary_frame = summary
         summary.columnconfigure((0, 1, 2), weight=1)
         self.summary_vars = []
         for col, (label, color) in enumerate((("RELAY", "#e9f7fa"), ("AUDIO", "#eee7fb"), ("MICROPHONE", "#fff2df"))):
-            panel = RoundedPanel(summary, fill=color, padding=(14, 12))
+            panel = RoundedPanel(summary, fill=color, padding=(10, 4))
             panel.grid(row=0, column=col, sticky="ew", padx=(0, 8 if col < 2 else 0))
             ttk.Label(panel.body, text=label, background=color, foreground="#9293a8",
-                      font=("Segoe UI", 9, "bold")).pack(anchor="w")
+                      font=("Segoe UI", 9, "bold")).pack(side="left")
             variable = tk.StringVar(value="Offline" if col == 0 else "Waiting" if col == 1 else "Off")
             self.summary_vars.append(variable)
             ttk.Label(panel.body, textvariable=variable, background=color, foreground="#38304f",
-                      font=("Segoe UI", 13, "bold")).pack(anchor="w", pady=(5, 0))
+                      font=("Segoe UI", 11, "bold")).pack(side="left", padx=(8, 0))
 
         toolbar = ttk.Frame(operation, style="Page.TFrame")
         self.operation_toolbar = toolbar
@@ -508,19 +531,19 @@ class App:
         toolbar.columnconfigure((0, 1), weight=1)
         for col, (label, variable) in enumerate((("Minutes", self.minutes), ("Round", self.round))):
             color = "#e9f7fa" if col == 0 else "#eee7fb"
-            panel = RoundedPanel(toolbar, fill=color, padding=(12, 10))
+            panel = RoundedPanel(toolbar, fill=color, padding=(10, 5))
             panel.grid(row=0, column=col, sticky="ew", padx=(0, 8))
             self.counter_panels.append(panel)
             box = panel.body
             self.counter_boxes.append(box)
             ttk.Label(box, text=label, background=color, foreground="#746b8b",
-                      font=("Segoe UI", 10, "bold")).pack(anchor="w", pady=(0, 4))
+                      font=("Segoe UI", 10, "bold")).pack(side="left", padx=(0,6))
             step = ttk.Frame(box, style=box.cget("style"))
-            step.pack(anchor="w")
+            step.pack(side="left")
             ttk.Button(step, text="-", style="Step.TButton", width=2,
                        command=lambda var=variable: self.step_counter(var, -1)).pack(side="left")
             ttk.Entry(step, textvariable=variable, width=3, justify="center",
-                      font=("Segoe UI", 20, "bold")).pack(side="left", padx=5, ipady=3)
+                      font=("Segoe UI", 17, "bold")).pack(side="left", padx=5, ipady=3)
             ttk.Button(step, text="+", style="Step.TButton", width=2,
                        command=lambda var=variable: self.step_counter(var, 1)).pack(side="left")
         self.stop_button = RoundedButton(toolbar, text="STOP", font=("Segoe UI", 12, "bold"),
@@ -532,36 +555,37 @@ class App:
         talk_row = ttk.Frame(operation, style="Page.TFrame")
         talk_row.pack(fill="x", pady=(0, 6))
         talk_row.columnconfigure(0, weight=1)
-        self.ptt = RoundedButton(talk_row, text="HOLD TO TALK  |  F8", font=("Segoe UI", 17, "bold"),
+        self.ptt = RoundedButton(talk_row, text="HOLD TO TALK  |  SPACE / F8", font=("Segoe UI", 16, "bold"),
                                  fill="#e7def9", foreground="#6b46b3", hover_fill="#dacef4",
-                                 pressed_fill="#ffe0aa", padding=(18, 18))
+                                 pressed_fill="#ffe0aa", padding=(14, 12))
         self.ptt.grid(row=0, column=0, sticky="ew")
         self.ptt.bind("<ButtonPress-1>", self.press_talk, add="+")
         self.send_widgets.append(self.ptt)
         root.bind_all("<ButtonRelease-1>", lambda event: setattr(self, "held", False), add="+")
         root.bind("<FocusOut>", self.check_focus)
-        self.ptt.bind("<KeyPress-space>", self.press_talk, add="+")
-        self.ptt.bind("<KeyRelease-space>", lambda event: setattr(self, "held", False), add="+")
+
         self.meter = ttk.Progressbar(operation, maximum=100)
         self.meter.pack(fill="x", pady=(0, 6))
         guide = ttk.Frame(operation, style="Page.TFrame")
         guide.pack(fill="x", pady=(0, 6))
-        ttk.Label(guide, text="Edit a message below, set minutes and round, then press Send.",
-                  style="Hint.TLabel", wraplength=180).grid(row=0, column=0, sticky="w")
+        self.guide_frame = guide
+        ttk.Label(guide, text="Ctrl +/-: zoom   |   Fit: show all",
+                  style="Hint.TLabel").grid(row=0, column=0, sticky="w")
         guide.columnconfigure(0, weight=1)
         ttk.Button(guide, text="Save announcements", command=self.save).grid(row=0, column=1, sticky="e", padx=(8, 0))
 
         # The entire operations page scrolls, including the one-off message.
-        quick_panel = RoundedPanel(operation, padding=14)
+        quick_panel = RoundedPanel(operation, padding=(10, 6))
         quick_panel.pack(side="bottom", fill="x", pady=(8, 0))
         quick = quick_panel.body
-        ttk.Label(quick, text="One-off announcement", style="CardTitle.TLabel").pack(anchor="w")
+
         quick_row = ttk.Frame(quick)
-        quick_row.pack(fill="x", pady=(4, 0))
-        ttk.Entry(quick_row, textvariable=self.oneoff, font=("Segoe UI", 14), width=1).pack(
-            side="left", fill="x", expand=True, ipady=9)
+        quick_row.pack(fill="x")
+        ttk.Label(quick_row, text="One-off", font=("Segoe UI", 11, "bold")).pack(side="left", padx=(0, 8))
+        ttk.Entry(quick_row, textvariable=self.oneoff, font=("Segoe UI", 13), width=1).pack(
+            side="left", fill="x", expand=True)
         quick_send = RoundedButton(quick_row, text="Send", font=("Segoe UI", 15, "bold"),
-                                   padding=(18, 16), background="#ffffff",
+                                   padding=(14, 11), background="#ffffff",
                                    command=lambda: self.say(self.oneoff.get()))
         quick_send.pack(side="right", padx=(8, 0))
         self.send_widgets.append(quick_send)
@@ -570,28 +594,29 @@ class App:
         self.announcement_body.pack(fill="x")
         self.announcement_editors = []
         self.title_editors = []
+        self.announcement_panels = []
         for title, message in self.slots:
-            panel = RoundedPanel(self.announcement_body, padding=(14, 12), stroke="#eaecf3")
-            panel.pack(fill="x", pady=(0, 10))
+            panel = RoundedPanel(self.announcement_body, padding=(10, 5), stroke="#eaecf3")
+            panel.pack(fill="x", pady=(0, 5))
+            self.announcement_panels.append(panel)
             card = panel.body
-            card.columnconfigure(0, weight=1)
-            title_editor = ttk.Entry(card, textvariable=title, font=("Segoe UI", 13, "bold"), width=12)
-            title_editor.grid(row=0, column=0, sticky="w", pady=(0, 5))
+            card.columnconfigure(1, weight=1)
+            title_editor = ttk.Entry(card, textvariable=title, font=("Segoe UI", 11, "bold"), width=10)
+            title_editor.grid(row=0, column=0, sticky="w", padx=(0, 8))
             self.title_editors.append(title_editor)
-            editor = ttk.Entry(card, textvariable=message, font=("Segoe UI", 14), width=1)
-            editor.grid(row=1, column=0, sticky="ew")
+            editor = ttk.Entry(card, textvariable=message, font=("Segoe UI", 13), width=1)
+            editor.grid(row=0, column=1, sticky="ew")
             self.announcement_editors.append(editor)
             preview = tk.StringVar()
             self.preview_vars.append(preview)
-            label = ttk.Label(card, textvariable=preview, font=("Segoe UI", 11), foreground="#8c91a4", wraplength=650, justify="left")
-            label.grid(row=2, column=0, sticky="w", pady=(5, 0))
+            label = ttk.Label(card, textvariable=preview, font=("Segoe UI", 9), foreground="#8c91a4", width=1, anchor="w")
+            label.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(2, 0))
             self.preview_labels.append(label)
-            button = RoundedButton(card, text="Send", font=("Segoe UI", 15, "bold"), width=5,
-                                   padding=(16, 16), background="#ffffff",
+            button = RoundedButton(card, text="Send", font=("Segoe UI", 14, "bold"), width=5,
+                                   padding=(12, 11), background="#ffffff",
                                    command=lambda var=message: self.say(var.get()))
-            button.grid(row=0, column=1, rowspan=3, sticky="nsew", padx=(14, 0))
+            button.grid(row=0, column=2, rowspan=2, sticky="nsew", padx=(10, 0))
             self.send_widgets.append(button)
-        self.announcement_area.canvas.bind("<Configure>", self.resize_previews, add="+")
 
         connection_panel = RoundedPanel(connection_area.body, padding=18)
         connection_panel.pack(fill="x")
@@ -685,10 +710,190 @@ class App:
             variable.trace_add("write", self.refresh_previews)
         self.refresh_previews()
         self.sync_mode()
+        self.prepare_zoom()
+        self.install_space_shortcut()
+        self.apply_zoom()
         self.navigation_changed()
+        self.queue_fit()
         root.protocol("WM_DELETE_WINDOW", self.quit)
         self.tick()
         root.after(300, self.auto_connect_saved)
+
+    def all_widgets(self):
+        pending = [self.root]
+        while pending:
+            widget = pending.pop()
+            yield widget
+            pending.extend(widget.winfo_children())
+
+    def prepare_zoom(self):
+        self._zoom_widgets = []
+        self._zoom_geometry = []
+        self._zoom_surfaces = []
+        for widget in self.all_widgets():
+            if isinstance(widget, (RoundedButton, RoundedPanel)):
+                self._zoom_surfaces.append(widget)
+            elif "font" in widget.keys() and widget.cget("font"):
+                spec = widget.cget("font")
+                actual = dict(zip(*(iter(self.root.tk.splitlist(self.root.tk.call("font", "actual", spec))),)*2))
+                self._zoom_widgets.append((widget, actual))
+            manager = widget.winfo_manager()
+            if manager in ("pack", "grid"):
+                info = widget.pack_info() if manager == "pack" else widget.grid_info()
+                pads = {key:tuple(int(n) for n in (info[key] if isinstance(info[key], (tuple,list)) else self.root.tk.splitlist(str(info[key]))))
+                        for key in ("padx", "pady", "ipadx", "ipady") if key in info}
+                self._zoom_geometry.append((widget, manager, pads))
+        self._zoom_style_fonts = {}
+        style = ttk.Style(self.root)
+        for name in (".", "Title.TLabel", "CardTitle.TLabel", "Status.TLabel", "Hint.TLabel",
+                     "PanelHint.TLabel", "HeaderHint.TLabel", "Step.TButton", "Zoom.TButton"):
+            spec = style.lookup(name, "font")
+            if spec:
+                actual = dict(zip(*(iter(self.root.tk.splitlist(self.root.tk.call("font", "actual", spec))),)*2))
+                self._zoom_style_fonts[name] = actual
+
+    def apply_zoom(self):
+        factor = self.zoom_percent/100
+        def font(actual):
+            return (actual["-family"], max(7, round(int(actual["-size"])*factor)),
+                    actual["-weight"], actual["-slant"])
+        for widget, actual in self._zoom_widgets:
+            widget.configure(font=font(actual))
+        for widget in self._zoom_surfaces:
+            widget.set_zoom(factor)
+        style = ttk.Style(self.root)
+        for name, actual in self._zoom_style_fonts.items():
+            style.configure(name, font=font(actual))
+        for name, padding in (("TButton",(12,9)),("TEntry",(7,)),("TCombobox",(7,)),
+                              ("Step.TButton",(8,5)),("Zoom.TButton",(4,2))):
+            style.configure(name, padding=tuple(round(n*factor) for n in padding))
+        for widget, manager, pads in self._zoom_geometry:
+            if widget.winfo_manager() != manager:
+                continue
+            config = {key:tuple(round(n*factor) for n in value) for key,value in pads.items()}
+            if manager == "pack":
+                widget.pack_configure(**config)
+            else:
+                widget.grid_configure(**config)
+        self.zoom_text.set(f"{self.zoom_percent}%")
+        self.sidebar.configure(width=round((76 if getattr(self,"_sidebar_compact",False) else 180)*factor))
+        self.announcement_area.canvas.yview_moveto(0)
+
+    def set_zoom(self, percent):
+        self.auto_fit = False
+        if self._fit_pending is not None:
+            self.root.after_cancel(self._fit_pending)
+            self._fit_pending = None
+        self.zoom_percent = max(50, min(150, percent))
+        self.apply_zoom()
+        return "break"
+
+    def change_zoom(self, delta):
+        return self.set_zoom(self.zoom_percent+delta)
+
+    def zoom_key(self, event):
+        key = event.keysym
+        if key in ("plus", "equal", "KP_Add"):
+            return self.change_zoom(10)
+        if key in ("minus", "underscore", "KP_Subtract"):
+            return self.change_zoom(-10)
+        if key in ("0", "KP_0"):
+            return self.set_zoom(100)
+
+    def queue_fit(self):
+        if self._closed or not hasattr(self, "_zoom_widgets") or not self.auto_fit or self._fitting:
+            return
+        if self._fit_pending is not None:
+            self.root.after_cancel(self._fit_pending)
+        self._fit_pending = self.root.after(80, self.fit_announcements)
+
+    def fit_announcements(self):
+        if self._closed or not self.root.winfo_exists() or self._fitting:
+            return
+        if self._fit_pending is not None:
+            self.root.after_cancel(self._fit_pending)
+        self._fit_pending = None
+        self.auto_fit = True
+        self._fitting = True
+        try:
+            for label in self.preview_labels:
+                label.grid()
+            if not self.summary_frame.winfo_manager():
+                self.summary_frame.pack(fill="x", pady=(0,6), before=self.operation_toolbar)
+            if not self.guide_frame.winfo_manager():
+                self.guide_frame.pack(fill="x", pady=(0,6), before=self.announcement_body)
+            self.zoom_percent = 100
+            self.apply_zoom()
+            self.root.update_idletasks()
+            canvas = self.announcement_area.canvas
+            bounds = canvas.bbox("all")
+            if bounds and bounds[3] > canvas.winfo_height()+1:
+                estimate = max(50, min(95, int(100*canvas.winfo_height()/bounds[3])//5*5))
+                for percent in range(estimate, 49, -5):
+                    self.zoom_percent = percent
+                    self.apply_zoom()
+                    self.root.update_idletasks()
+                    bounds = canvas.bbox("all")
+                    if bounds and bounds[3] <= canvas.winfo_height()+1:
+                        break
+            if bounds and bounds[3] > canvas.winfo_height()+1:
+                for label in self.preview_labels:
+                    label.grid_remove()
+                self.root.update_idletasks()
+                bounds = canvas.bbox("all")
+                if bounds and bounds[3] > canvas.winfo_height()+1:
+                    self.summary_frame.pack_forget()
+                    self.root.update_idletasks()
+                    bounds = canvas.bbox("all")
+                    if bounds and bounds[3] > canvas.winfo_height()+1:
+                        self.guide_frame.pack_forget()
+                        self.root.update_idletasks()
+                        bounds = canvas.bbox("all")
+                        if bounds and bounds[3] > canvas.winfo_height()+1:
+                            for panel in self.announcement_panels:
+                                panel.pack_configure(pady=0)
+                            self.root.update_idletasks()
+        finally:
+            self._fitting = False
+
+    def is_text_editor(self, widget):
+        return isinstance(widget, (tk.Entry, tk.Text, tk.Spinbox, ttk.Entry,
+                                   ttk.Combobox, ttk.Spinbox))
+
+    def install_space_shortcut(self):
+        tag = "RaceVoicePushToTalk"
+        self.root.bind_class(tag, "<KeyPress-space>", self.space_press)
+        self.root.bind_class(tag, "<KeyRelease-space>", self.space_release)
+        self.root.bind_class(tag, "<FocusIn>", self.space_focus)
+        self.root.bind("<Button-1>", self.background_focus, add="+")
+        for widget in self.all_widgets():
+            widget.bindtags((tag, *widget.bindtags()))
+
+    def space_press(self, event):
+        if self.is_text_editor(event.widget) or event.widget.winfo_toplevel() is not self.root:
+            return
+        if event.state & 0xC:
+            return "break"
+        if self.running and self.role.get() == "sender":
+            self.space_held = True
+            return "break"
+        # Space must not activate a focused Send/STOP/connect button.
+        return "break"
+
+    def space_release(self, event):
+        if self.space_held:
+            self.space_held = False
+            return "break"
+        if not self.is_text_editor(event.widget):
+            return "break"
+
+    def background_focus(self, event):
+        if not self.is_text_editor(event.widget) and self.is_text_editor(self.root.focus_get()):
+            self.root.focus_set()
+
+    def space_focus(self, event):
+        if self.is_text_editor(event.widget):
+            self.space_held = False
 
     def select_page(self, index):
         self.held = False
@@ -696,7 +901,7 @@ class App:
         self.navigation_changed()
 
     def navigation_changed(self, event=None):
-        self.held = False
+        self.held = self.space_held = False
         selected = self.tabs.index(self.tabs.select())
         self.page_title.configure(text=("Announcements", "Connection", "Audio setup")[selected])
         for index, button in enumerate(self.nav_buttons):
@@ -704,18 +909,35 @@ class App:
             button.configure(fill="#eee7fb" if active else "#ffffff",
                              foreground="#7954c6" if active else "#7c8397")
 
+    def window_resized(self, event):
+        if event.widget is not self.root:
+            return
+        size = (event.width, event.height)
+        if getattr(self, "_window_size", None) == size:
+            return
+        self._window_size = size
+        self.reflow_sidebar(event)
+        self.queue_fit()
+
+    def window_destroyed(self, event):
+        if event.widget is self.root:
+            self._closed = True
+            if self._fit_pending is not None:
+                self.root.after_cancel(self._fit_pending)
+                self._fit_pending = None
+
     def reflow_sidebar(self, event):
         if event.widget is not self.root:
             return
-        compact = event.width < 980
+        compact = event.width < 1150
         if getattr(self, "_sidebar_compact", None) == compact:
             return
         self._sidebar_compact = compact
-        self.sidebar.configure(width=76 if compact else 210)
+        self.sidebar.configure(width=round((76 if compact else 180)*self.zoom_percent/100))
         labels = ("Send", "Link", "Audio") if compact else ("Announcements", "Connection", "Audio setup")
         for button, text in zip(self.nav_buttons, labels):
             button.configure(text=text, font=("Segoe UI", 9 if compact else 11, "bold"),
-                             padding=(3 if compact else 12, 12))
+                             padding=(3 if compact else 12, 8))
         for label in (self.sidebar_name, self.sidebar_caption):
             if compact:
                 label.pack_forget()
@@ -723,9 +945,10 @@ class App:
                 label.pack(anchor="w", padx=22, pady=(0, 3) if label is self.sidebar_name else (0, 28),
                            before=self.nav_buttons[0])
         self.sidebar_brand.pack_configure(padx=16 if compact else 22, pady=(24, 24 if compact else 2))
-        self.sidebar_version.configure(text="v0.5" if compact else "Race Voice\nv0.5.0")
+        self.sidebar_version.configure(text="v0.5" if compact else "Race Voice\nv0.5.1")
         self.sidebar_version.pack_configure(padx=12 if compact else 22)
         self.navigation_changed()
+        self.queue_fit()
 
     def update_summary(self):
         values = (
@@ -760,15 +983,6 @@ class App:
         for preview, (_, message) in zip(self.preview_vars, self.slots):
             preview.set(message.get().replace("{minutes}", self.minutes.get()).replace("{round}", self.round.get()))
 
-    def resize_previews(self, event):
-        send_width = max((widget.winfo_reqwidth() for widget in self.send_widgets if widget is not self.ptt), default=150)
-        width = max(120, event.width-send_width-78)
-        if getattr(self, "_preview_width", None) == width:
-            return
-        self._preview_width = width
-        for label in self.preview_labels:
-            label.configure(wraplength=width)
-
     def step_counter(self, variable, delta):
         try:
             number = int(variable.get())
@@ -780,9 +994,9 @@ class App:
         def release_if_outside():
             try:
                 if self.root.focus_get() is None:
-                    self.held = False
+                    self.held = self.space_held = False
             except tk.TclError:
-                self.held = False
+                self.held = self.space_held = False
         self.root.after_idle(release_if_outside)
 
     def press_talk(self, event):
@@ -830,6 +1044,7 @@ class App:
         os.startfile(str(CONFIG.parent))
 
     def change_role(self, *_):
+        self.space_held = False
         self.saved_keys[self.key_role] = self.key.get()
         self.key_role = self.role.get()
         self.key.set(self.saved_keys.get(self.key_role, ""))
@@ -840,6 +1055,7 @@ class App:
     def save(self):
         settings = {"role": self.role.get(), "url": self.url.get(),
                     "auto_connect": self.auto_connect.get(),
+                    "zoom": self.zoom_percent, "auto_fit": self.auto_fit,
                     "minutes": self.minutes.get(), "round": self.round.get(),
                     "slots": [[a.get(), b.get()] for a, b in self.slots]}
         for i, widget in enumerate(self.device_lists):
@@ -876,6 +1092,7 @@ class App:
 
     def toggle(self):
         if self.running:
+            self.space_held = self.held = False
             self.engine.close()
             self.running = False
             self.system.set(False)
@@ -916,13 +1133,16 @@ class App:
         sender = self.running and self.role.get() == "sender"
         pressed = bool(ctypes.windll.user32.GetAsyncKeyState(0x77) & 0x8000)
         self.engine.system_on = sender and self.system.get()
-        self.engine.mic_on = sender and (self.always.get() or self.held or pressed)
+        self.engine.mic_on = sender and (self.always.get() or self.held or self.space_held or pressed)
         enabled = self.running and self.role.get() == "receiver" and self.enable.get() and not self.engine.playback_failed
         if self.engine.enabled and not enabled:
             self.engine.clear("audio_disabled")
         self.engine.enabled = enabled
         self.engine.volumes = [v.get() for v in self.volume_vars]
         self.mic_status.set("MIC LIVE" if self.engine.mic_on and self.engine.ready and self.engine.capture_ready[1] else "MIC OFF")
+        talk_text = "MIC LIVE  |  SPACE / F8" if self.mic_status.get() == "MIC LIVE" else "HOLD TO TALK  |  SPACE / F8"
+        if self.ptt.cget("text") != talk_text:
+            self.ptt.configure(text=talk_text)
         self.meter["value"] = self.engine.peak * 100
         self.engine.peak *= .8
         self.update_summary()

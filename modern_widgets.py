@@ -23,6 +23,7 @@ class RoundedButton(tk.Canvas):
         self._text = str(text)
         self._command = command
         self._font = Font(root=parent, font=font)
+        self._base_font_size = self._font.actual("size")
         self._fill = fill
         self._foreground = foreground
         self._hover_fill = hover_fill
@@ -30,6 +31,8 @@ class RoundedButton(tk.Canvas):
         self._disabled_fill = disabled_fill
         self._disabled_foreground = disabled_foreground
         self._padding = padding if isinstance(padding, (tuple, list)) else (padding, padding)
+        self._base_padding = self._padding
+        self._zoom = 1.0
         self._minimum_chars = width
         self._state = state
         self._radius = radius
@@ -141,9 +144,12 @@ class RoundedButton(tk.Canvas):
                 setattr(self, attribute, kwargs.pop(key))
         if "font" in kwargs:
             self._font = Font(root=self, font=kwargs.pop("font"))
+            self._base_font_size = self._font.actual("size")
+            self._font.configure(size=max(7, round(self._base_font_size*self._zoom)))
         if "padding" in kwargs:
             value = kwargs.pop("padding")
-            self._padding = value if isinstance(value, (tuple, list)) else (value, value)
+            self._base_padding = value if isinstance(value, (tuple, list)) else (value, value)
+            self._padding = tuple(round(n*self._zoom) for n in self._base_padding)
         if self._state == "disabled":
             self._pressed = False
         if kwargs:
@@ -162,6 +168,13 @@ class RoundedButton(tk.Canvas):
                   "disabled_fill": self._disabled_fill, "disabled_foreground": self._disabled_foreground,
                   "font": str(self._font), "padding": self._padding}
         return values[key] if key in values else super().cget(key)
+
+    def set_zoom(self, factor):
+        self._zoom = factor
+        self._font.configure(size=max(7, round(self._base_font_size*factor)))
+        self._padding = tuple(round(n*factor) for n in self._base_padding)
+        self._resize_request()
+        self._redraw()
 
     def invoke(self):
         if self._state != "disabled" and callable(self._command):
@@ -183,6 +196,8 @@ class RoundedPanel(tk.Canvas):
         self._radius = radius
         self._stroke = stroke
         self._padding = padding if isinstance(padding, (tuple, list)) else (padding, padding)
+        self._base_padding = self._padding
+        self._zoom = 1.0
         self._last_width = self._last_height = None
         super().__init__(parent, background=background, highlightthickness=0,
                          borderwidth=0, **kwargs)
@@ -195,6 +210,14 @@ class RoundedPanel(tk.Canvas):
         self.body.bind("<Configure>", self._body_changed)
         self.bind("<Configure>", self._canvas_changed)
         self.after_idle(self._body_changed)
+
+    def set_zoom(self, factor):
+        self._zoom = factor
+        self._padding = tuple(round(n*factor) for n in self._base_padding)
+        self.coords(self._window, *self._padding)
+        self._last_width = None
+        self.itemconfigure(self._window, width=max(1, self.winfo_width()-2*self._padding[0]))
+        self._body_changed()
 
     def _body_changed(self, event=None):
         if not self.winfo_exists():

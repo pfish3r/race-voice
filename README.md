@@ -6,17 +6,17 @@ Both PCs make outbound connections to the relay, so they work across isolated gu
 
 ## Features
 
-- System-output capture, large push-to-talk button/global F8, and optional always-on microphone.
+- System-output capture, large push-to-talk button, app-only Space/global F8 shortcuts, and optional always-on microphone.
 - Five editable announcement slots plus one-off messages. Use {minutes} and {round} with the large counter controls.
 - Text announcements spoken directly by Windows on the receiver's selected speakers.
-- Modern sidebar, single-line message editors, full previews and large Send/STOP buttons.
+- Compact announcement rows, automatic Fit, editable single-line messages and large Send/STOP buttons. Ctrl+plus/minus zooms, Ctrl+0 resets to 100%.
 - Separate sender/receiver keys protected locally with Windows DPAPI.
 - Remembered mode, address, devices and templates; optional startup auto-connect.
 - Configurable WebSocket port, default 8843.
 - Linux Docker relay with Let's Encrypt certificates using GoDaddy DNS validation and automatic renewal.
 - HTTPS dashboard with traffic/event graphs, one hour of server-retained history, per-container CPU/memory, client logs, keys, certificate status, renewal and opt-in browser listening.
 
-The Windows client is **v0.5.0**. The relay/dashboard are **v0.3.7**. This metrics update requires rebuilding both Linux containers; the Windows client is unchanged.
+The Windows client is **v0.5.1**. The relay/dashboard are **v0.3.7**. This metrics update requires rebuilding both Linux containers; the Windows client is unchanged.
 
 ## Windows setup
 
@@ -28,11 +28,13 @@ Requires Windows 11 and Python 3.12 x64.
 4. On Connection, select mode, relay URL and matching access key.
 5. Select devices in Audio setup, then connect.
 
-Receiver audio defaults on. On the sender, enable Send system audio for timing sounds, hold F8 for the microphone, or use the announcement buttons.
+Receiver audio defaults on. On the sender, enable Send system audio for timing sounds, hold Space while this app is active or F8 globally for the microphone, or use the announcement buttons. Space types normally in text fields and never activates a focused Send button.
 
 For a portable executable, run **Build-EXE.cmd** and copy the entire dist/RaceVoice directory. This repository contains source, not a signed installer or prebuilt EXE.
 
 Auto-connect is optional. It requires a saved address, usable protected key and available saved devices. System-send and always-on microphone switches start off.
+
+The Announcements page fits the five presets to the available window by default. Fit restores automatic fitting after a manual zoom. Ctrl+plus (or Ctrl+equals) zooms in, Ctrl+minus zooms out, and Ctrl+0 resets to 100%; keypad plus/minus work too. Zoom and Fit preferences are saved. At small sizes Fit may hide secondary previews/status tiles and spacing; the editable messages and audio controls remain available. Extremely small/high-DPI windows can still scroll. Zoom range is 50-150%.
 
 ## Windows updates
 
@@ -74,11 +76,12 @@ No audio is recorded by the relay. TLS protects transport, but the relay can acc
 python -m unittest discover -s tests -v
 node tests/test_monitor.cjs
 node tests/test_client_logs.cjs
-node tests/test_metrics.cjs\npowershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_windows_updater.ps1
+node tests/test_metrics.cjs
+powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_windows_updater.ps1
 ~~~
 
 Tests cover authentication/forwarding, portal controls/log sanitization, playback writes, speech queue/STOP/deduplication and native Tk layouts. Audio/SAPI tests use fakes; passing does not prove audibility. Verify Docker/certificate provisioning, hardware playback and EXE packaging in the deployment environment.
 
 ## Current scope
 
-One sender, one Windows receiver, up to two browser listeners. One-way audio only. System capture includes every application on the selected output. Live PCM uses WebSocket/TCP and can stall or drop stale frames on poor connections. No installer, automatic updates or device hotplug recovery.
+One sender, one Windows receiver, up to two browser listeners. One-way audio only. System capture includes every application on the selected output. Live PCM uses WebSocket/TCP and can stall or drop stale frames on poor connections. No packaged installer, unattended updates or device hotplug recovery.

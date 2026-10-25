@@ -14,7 +14,15 @@ For an offline ZIP or an alternate absolute local folder, run the PowerShell hel
 
 Settings and DPAPI-protected keys live under %APPDATA%/RaceVoice. Keys are tied to the Windows account and should not be copied to another PC.
 
-The v0.5.0 interface needs no new dependencies or Linux update when the relay already has v0.3.6 client diagnostics.
+The v0.5.1 interface needs no new dependencies or Linux update when the relay already has v0.3.6 client diagnostics.
+
+## Compact layout, zoom and push-to-talk (Windows v0.5.1)
+
+Announcement titles, editable messages and Send buttons now share compact rows. Fit automatically adjusts text/control size for the current window, including when resizing. Ctrl+plus/Ctrl+equals/keypad add zoom in, Ctrl+minus/keypad subtract zoom out, Ctrl+0 restores 100%. Zoom buttons and Fit are also in the header. Manual zoom turns off automatic fitting until Fit is selected again; the preference is saved.
+
+Hold Space while RaceVoice is the active app to talk, and release it to stop. Space remains normal text entry in announcement, key, address and other editable fields. It cannot trigger a focused Send/STOP/connect button. Leaving the app, changing mode or focusing a text editor releases Space PTT. F8 remains global. Audio capture, speech playback and relay protocol are unchanged.
+
+This is a Windows source update. Run Update-RaceVoice.cmd, then Start-Race-Voice.cmd. Existing EXEs require Build-EXE.cmd. No relay rebuild is needed.
 
 ## Linux
 
