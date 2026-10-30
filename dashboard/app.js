@@ -17,6 +17,7 @@ function renderClientLogs(){
   const li=document.createElement("li"),label=document.createElement("strong"),meta=document.createElement("span"),stamp=document.createElement("time");
   label.textContent=(e.role==="receiver"?"Receiver":"Sender")+": "+(clientEventNames[e.event]||e.event);
   const parts=[];
+  if(e.client_id)parts.push("Receiver "+e.client_id);
   if(e.id)parts.push("ID "+e.id);
   if(Number.isInteger(e.characters))parts.push(e.characters+" characters");
   if(typeof e.seconds==="number")parts.push(e.seconds.toFixed(2)+" seconds");
@@ -44,10 +45,12 @@ async function refresh(){
   show("hostname",d.hostname);show("endpoint","wss://"+d.hostname+":"+d.port);
   show("uptime",Math.floor(r.uptime_seconds/3600)+"h "+Math.floor(r.uptime_seconds%3600/60)+"m "+r.uptime_seconds%60+"s");
   show("sender",r.sender_connected?"Connected":"Disconnected");
-  show("receiver",r.receiver_connected?"Connected":"Disconnected");
+  const receiverCount=r.receiver_count??(r.receiver_connected?1:0);
+  const enabledCount=r.receiver_enabled_count??(r.receiver_enabled?1:0);
+  show("receiver",receiverCount+" connected");
   show("senderSince",r.sender_connected?"Since "+date(r.connected_at.sender):"Waiting for the main hall PC");
-  show("receiverSince",r.receiver_connected?"Since "+date(r.connected_at.receiver):"Waiting for the other room PC");
-  show("enabled",r.receiver_connected&&r.receiver_enabled?"Enabled":"Disabled");
+  show("receiverSince","Windows receivers, excluding browser listeners");
+  show("enabled",enabledCount+" of "+receiverCount+" enabled");
   const now=Date.now(),s=r.stats;
   show("rate",previous&&s.audio_bytes_out>=previous.bytes?((s.audio_bytes_out-previous.bytes)*8/(now-previous.time)).toFixed(1)+" kbps":"-");
   previous={time:now,bytes:s.audio_bytes_out};
@@ -63,7 +66,7 @@ async function refresh(){
   show("nextAttempt",cooldown?"Next manual attempt: "+date(c.next_manual_attempt):"Manual renewal available");
   $("renew").disabled=busy||!t.available||!d.controller_available||cooldown||["running","loading"].includes(j.state);
   const stats=$("stats");stats.replaceChildren();
-  [["Admin listeners",r.admin_listeners||0],["Browser audio forwarded",bytes(s.monitor_bytes_out||0)],["Audio received",bytes(s.audio_bytes_in)],["Audio forwarded",bytes(s.audio_bytes_out)],["Frames forwarded",s.frames_forwarded],["Receiver frames dropped",s.frames_dropped],["Announcements forwarded",s.announcements],["Sender connections",r.connections.sender],["Receiver connections",r.connections.receiver],["Authentication rejections",s.auth_rejections],["Last audio received",date(r.last_audio)]].forEach(([a,b])=>row(stats,a,b));
+  [["Admin listeners",r.admin_listeners||0],["Browser audio forwarded",bytes(s.monitor_bytes_out||0)],["Audio received",bytes(s.audio_bytes_in)],["Audio forwarded",bytes(s.audio_bytes_out)],["Frames forwarded",s.frames_forwarded],["Receiver frames dropped",s.frames_dropped],["Announcements forwarded",s.announcements],["Sender connections",r.connections.sender],["Receiver connections since restart",r.connections.receiver],["Authentication rejections",s.auth_rejections],["Last audio received",date(r.last_audio)]].forEach(([a,b])=>row(stats,a,b));
   clientLogs=Array.isArray(r.client_logs)?r.client_logs:[];renderClientLogs();
   const events=$("events");events.replaceChildren();
   for(const e of r.events){const li=document.createElement("li"),time=document.createElement("time");li.textContent=e.message;time.textContent=date(e.time);li.append(time);events.append(li)}

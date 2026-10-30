@@ -15,7 +15,7 @@
 </section>
 <section class="cards">
 <article><label>MAIN HALL</label><h2>Sender</h2><strong id="sender">-</strong><small id="senderSince">No connection data</small></article>
-<article><label>OTHER ROOM</label><h2>Receiver</h2><strong id="receiver">-</strong><small id="receiverSince">No connection data</small></article>
+<article><label>OTHER ROOMS</label><h2>Receivers</h2><strong id="receiver">-</strong><small id="receiverSince">No connection data</small></article>
 <article><label>PLAYBACK</label><h2>Receiver audio</h2><strong id="enabled">-</strong><small>Reports app enable state, not speaker audibility.</small></article>
 <article><label>LIVE TRAFFIC</label><h2>Outgoing audio</h2><strong id="rate">-</strong><small>Payload bandwidth, excluding TLS overhead.</small></article>
 </section>
@@ -27,7 +27,7 @@
 <article><label>PAYLOAD RECEIVED</label><strong id="dataIn">-</strong><small>Sender and receiver application data</small></article>
 <article><label>PAYLOAD SENT</label><strong id="dataOut">-</strong><small>Clients and browser listeners combined</small></article>
 <article><label>EVENTS RECEIVED</label><strong id="eventsIn">-</strong><small>Valid announcement and STOP commands</small></article>
-<article><label>EVENTS FORWARDED</label><strong id="eventsOut">-</strong><small>Sent to the Windows receiver</small></article>
+<article><label>EVENTS FORWARDED</label><strong id="eventsOut">-</strong><small>Deliveries to Windows receivers</small></article>
 </div>
 <div class="container-cards">
 <article><h3>Relay container</h3><dl><dt>CPU</dt><dd id="relayCpu">-</dd><dt>Memory</dt><dd id="relayMemory">-</dd></dl><small id="relayLimit">-</small></article>
@@ -42,7 +42,7 @@
 <figure><figcaption>Container memory <small>MiB including charged file cache</small></figcaption><div id="memoryChart"></div></figure>
 </div>
 <details><summary>Detailed event and audio counters</summary><dl id="metricTotals"></dl></details>
-<p class="hint">Sampled every 5 seconds. The server keeps up to one hour of history while the portal is closed. Counters and history reset on relay restart. Payload totals exclude authentication, WebSocket framing, TLS, dashboard HTTP and certificate traffic, so they are not your hosting provider's billable usage. Sent includes browser listening. Receiver frame drops include audio skipped while the receiver is disabled or disconnected. Forwarding is not confirmation of playback; speech completion is reported separately by updated Windows clients. Container memory includes file cache and may differ from Docker CLI figures. Missing accounting is shown as unavailable.</p>
+<p class="hint">Sampled every 5 seconds. The server keeps up to one hour of history while the portal is closed. Counters and history reset on relay restart. Payload totals exclude authentication, WebSocket framing, TLS, dashboard HTTP and certificate traffic, so they are not your hosting provider's billable usage. Sent includes browser listening. Receiver counters count each delivery separately. Frame drops include audio skipped for disabled, disconnected or slow receivers. Forwarding is not confirmation of playback; speech completion is reported separately by updated Windows clients. Container memory includes file cache and may differ from Docker CLI figures. Missing accounting is shown as unavailable.</p>
 </section>
 <section class="panel">
 <div class="panelhead"><div><p class="eyebrow">LET-S ENCRYPT / GODADDY DNS</p><h2>TLS certificate</h2></div><span class="badge" id="certState">Checking</span></div>
@@ -53,7 +53,7 @@
 </section>
 <section class="panel">
 <div class="panelhead"><div><p class="eyebrow">WINDOWS APP SETUP</p><h2>Client access keys</h2></div></div>
-<p class="hint">Use Sender on the main hall PC and Receiver in the other room. These are your existing keys.</p>
+<p class="hint">Use Sender on the main hall PC and Receiver on each listening PC. All receivers use the same Receiver key. These are your existing keys.</p>
 <div class="keyrow"><label for="senderKey">Sender key</label><input id="senderKey" type="password" readonly placeholder="Hidden" autocomplete="off" aria-label="Sender access key"><button id="senderShow" aria-controls="senderKey" aria-expanded="false">Show</button><button id="senderCopy">Copy</button></div>
 <div class="keyrow"><label for="receiverKey">Receiver key</label><input id="receiverKey" type="password" readonly placeholder="Hidden" autocomplete="off" aria-label="Receiver access key"><button id="receiverShow" aria-controls="receiverKey" aria-expanded="false">Show</button><button id="receiverCopy">Copy</button></div>
 <p id="keyMessage" role="status" aria-live="polite" class="hint">Keys are loaded only when you click Show or Copy. Revealed keys hide after 30 seconds.</p>
