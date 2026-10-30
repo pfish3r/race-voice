@@ -77,6 +77,7 @@ python -m unittest discover -s tests -v
 node tests/test_monitor.cjs
 node tests/test_client_logs.cjs
 node tests/test_metrics.cjs
+node tests/test_receivers.cjs
 powershell.exe -NoProfile -ExecutionPolicy Bypass -File tests/test_windows_updater.ps1
 ~~~
 
@@ -84,7 +85,7 @@ Tests cover authentication/forwarding, portal controls/log sanitization, playbac
 
 ## Current scope
 
-One sender, one Windows receiver, up to two browser listeners. One-way audio only. System capture includes every application on the selected output. Live PCM uses WebSocket/TCP and can stall or drop stale frames on poor connections. No packaged installer, unattended updates or device hotplug recovery.
+One sender, up to 32 Windows receivers, up to two browser listeners. One-way audio only. System capture includes every application on the selected output. Live PCM uses WebSocket/TCP and can stall or drop stale frames on poor connections. No packaged installer, unattended updates or device hotplug recovery.
 
 ## Multiple receivers (relay v0.3.8)
 
@@ -93,3 +94,21 @@ One sender broadcasts live system/microphone audio and text announcements to up 
 The portal shows connected receivers and how many have audio enabled. Browser listeners are counted separately. Each receiver has an independent bounded output queue, so a slow room cannot hold up other rooms. Recent audio is preferred over stale buffered audio; announcement commands retain FIFO order. New/reconnected receivers do not replay previous announcements. There is no cross-room playback synchronization or room targeting.
 
 Outgoing bandwidth and forwarded event counters count each receiver delivery separately. A command delivered to three PCs counts as one event received and three forwarded. Client diagnostics include a temporary receiver connection ID, which changes on reconnect. The sender remains limited to one connection.
+
+## Dedicated public Linux server
+
+Use a fresh server with Docker Engine, Docker Compose, curl, unzip and OpenSSL installed. A dedicated hostname pointing at the server's public IP avoids private DNS overrides that may still point the existing relay hostname at a home LAN address.
+
+As root, download and extract the source without needing Git:
+
+~~~bash
+mkdir -p /opt/race-voice
+curl -fL https://github.com/pfish3r/race-voice/archive/refs/heads/main.zip -o /tmp/race-voice-main.zip
+unzip -q /tmp/race-voice-main.zip -d /opt/race-voice
+cd /opt/race-voice/race-voice-main
+bash setup-relay.sh
+~~~
+
+For a dedicated server with TCP 443 free, enter 443 when setup asks for the public WebSocket port. Allow inbound TCP 443 in the hosting firewall and the server firewall. DNS certificate validation still uses GoDaddy; inbound port 80 is unnecessary. Outbound DNS and HTTPS must work.
+
+Use wss://YOUR_HOSTNAME:443 in all Windows clients and https://YOUR_HOSTNAME/admin for the portal. Use the newly generated role keys unless you deliberately migrated the existing private configuration. Never paste GoDaddy credentials into chat. Verify certificate issuance with docker compose logs --tail=100 caddy, then test from the guest network. Port 443 can help where custom ports are filtered, but networks may still restrict WebSockets or particular destinations.
