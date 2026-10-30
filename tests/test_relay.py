@@ -86,6 +86,124 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
         for task in self.tasks:
             task.cancel()
         await asyncio.gather(*self.tasks, return_exceptions=True)
+    async def test_multiple_receivers_get_audio_speech_stop_once_each(self):
+        sender = await self.add("sender")
+        rooms = [await self.add("receiver") for _ in range(3)]
+        for room in rooms:
+            room.push({"type":"enabled","value":True})
+        await self.settle()
+        for message in (bytes([0])*1921, json.dumps({"type":"say","id":"same-id","text":"Qualifying in ten minutes"}), json.dumps({"type":"stop"})):
+            sender.push(message)
+            await self.settle()
+            for room in rooms:
+                self.assertEqual(room.sent.count(message), 1)
+        snap = self.relay.snapshot()
+        self.assertEqual(snap["receiver_count"], 3)
+        self.assertEqual(snap["receiver_enabled_count"], 3)
+        self.assertEqual(snap["stats"]["audio_bytes_out"], 3*1920)
+        self.assertEqual(snap["stats"]["events_received"], 2)
+        self.assertEqual(snap["stats"]["events_forwarded"], 6)
+        status = json.loads(sender.sent[-1])
+        self.assertEqual(status["receiver_count"], 3)
+        self.assertTrue(status["receiver_enabled"])
+
+    async def test_enable_disconnect_and_reconnect_are_per_receiver(self):
+        sender = await self.add("sender")
+        first, second = await self.add("receiver"), await self.add("receiver")
+        first.push({"type":"enabled","value":True})
+        await self.settle()
+        audio = bytes([1])+bytes([0])*1920
+        sender.push(audio)
+        await self.settle()
+        self.assertIn(audio, first.sent)
+        self.assertNotIn(audio, second.sent)
+        second.push({"type":"enabled","value":True})
+        first.push({"type":"enabled","value":False})
+        await self.settle()
+        await first.close()
+        await self.settle()
+        self.assertEqual(self.relay.snapshot()["receiver_count"],1)
+        self.assertTrue(self.relay.enabled)
+        sender.push(audio)
+        await self.settle()
+        self.assertEqual(second.sent.count(audio),1)
+        replacement = await self.add("receiver")
+        self.assertNotIn(audio,replacement.sent)
+        self.assertEqual(self.relay.snapshot()["receiver_enabled_count"],1)
+        await second.close()
+        await self.settle()
+        self.assertFalse(self.relay.enabled)
+        self.assertTrue(self.relay.snapshot()["receiver_connected"])
+
+    async def test_stalled_receiver_does_not_delay_healthy_room(self):
+        sender = await self.add("sender")
+        slow, healthy = await self.add("receiver"), await self.add("receiver")
+        for room in (slow, healthy):
+            room.push({"type":"enabled","value":True})
+        await self.settle()
+        gate = asyncio.Event()
+        async def stalled(message):
+            if isinstance(message,bytes):
+                await gate.wait()
+            slow.sent.append(message)
+        slow.send = stalled
+        for i in range(40):
+            sender.push(bytes([0])+bytes([i])*1920)
+            await self.settle()
+        self.assertEqual(len([m for m in healthy.sent if isinstance(m,bytes)]),40)
+        self.assertLessEqual(len(self.relay.receivers[slow]["queue"]),32)
+        command = json.dumps({"type":"say","text":"Complete message","id":"unique"})
+        sender.push(command)
+        await self.settle()
+        self.assertEqual(healthy.sent.count(command),1)
+        gate.set()
+        await self.settle()
+        self.assertEqual(slow.sent.count(command),1)
+        self.assertGreater(self.relay.stats["frames_dropped"],0)
+
+    async def test_receiver_diagnostics_have_separate_rate_limits(self):
+        first, second = await self.add("receiver"), await self.add("receiver")
+        for _ in range(35):
+            first.push({"type":"diagnostic","event":"speech_started"})
+        second.push({"type":"diagnostic","event":"speech_completed"})
+        await self.settle()
+        logs = self.relay.snapshot()["client_logs"]
+        self.assertEqual(len(logs),31)
+        self.assertEqual(len(set(item["client_id"] for item in logs)),2)
+        await first.close()
+        await self.settle()
+        self.assertEqual(len(self.relay.client_log_rates),1)
+
+    async def test_command_queue_overflow_closes_only_slow_room(self):
+        sender = await self.add("sender")
+        slow, healthy = await self.add("receiver"), await self.add("receiver")
+        for room in (slow, healthy):
+            room.push({"type":"enabled","value":True})
+        await self.settle()
+        gate = asyncio.Event()
+        async def stalled(message):
+            if isinstance(message,str) and json.loads(message).get("type") == "say":
+                await gate.wait()
+            slow.sent.append(message)
+        slow.send = stalled
+        for i in range(35):
+            sender.push({"type":"say","text":str(i)})
+            await self.settle()
+        self.assertLessEqual(len(self.relay.receivers[slow]["queue"]),32)
+        self.assertFalse(self.relay.receivers[slow]["enabled"])
+        self.assertEqual(sum(isinstance(m,str) and json.loads(m).get("type") == "say" for m in healthy.sent),35)
+        gate.set()
+        await self.settle()
+        self.assertEqual(slow.closed[0],1013)
+        self.assertIn(healthy,self.relay.receivers)
+
+    async def test_receiver_limit_does_not_replace_existing_connections(self):
+        for _ in range(32):
+            await self.add("receiver")
+        rejected = await self.add("receiver")
+        self.assertEqual(rejected.closed[0],1008)
+        self.assertEqual(self.relay.snapshot()["receiver_count"],32)
+
     async def test_stats_count_forwarding_without_disclosing_keys(self):
         sender = await self.add("sender")
         receiver = await self.add("receiver")
@@ -174,7 +292,7 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
         await self.settle()
         self.assertIn(audio,receiver.sent)
         self.assertIn(audio,monitor.sent)
-        self.assertIs(self.relay.peers["receiver"],receiver)
+        self.assertIn(receiver,self.relay.receivers)
 
     async def test_monitor_is_read_only(self):
         sender = await self.add("sender")
@@ -275,7 +393,7 @@ class RelayTests(unittest.IsolatedAsyncioTestCase):
         await receiver.close()
         await self.settle()
         self.assertFalse(self.relay.enabled)
-        self.assertNotIn("receiver", self.relay.peers)
+        self.assertFalse(self.relay.receivers)
 
     async def test_client_diagnostics_authenticated_and_not_forwarded(self):
         sender = await self.add("sender")
