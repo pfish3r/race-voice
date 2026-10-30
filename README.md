@@ -1,8 +1,8 @@
 # Race Voice
 
-Windows 11 audio and announcement relay for race clubs. Send LiveRC system sound, microphone audio and spoken announcements from race control to another room through a Linux cloud relay.
+Windows 11 audio and announcement relay for race clubs. Send LiveRC system sound, microphone audio and spoken announcements from race control to multiple rooms through a Linux cloud relay.
 
-Both PCs make outbound connections to the relay, so they work across isolated guest networks without a direct LAN connection.
+All PCs make outbound connections to the relay, so they work across isolated guest networks without a direct LAN connection.
 
 ## Features
 
@@ -16,7 +16,7 @@ Both PCs make outbound connections to the relay, so they work across isolated gu
 - Linux Docker relay with Let's Encrypt certificates using GoDaddy DNS validation and automatic renewal.
 - HTTPS dashboard with traffic/event graphs, one hour of server-retained history, per-container CPU/memory, client logs, keys, certificate status, renewal and opt-in browser listening.
 
-The Windows client is **v0.5.1**. The relay/dashboard are **v0.3.7**. This metrics update requires rebuilding both Linux containers; the Windows client is unchanged.
+The Windows client is **v0.5.1**. The relay/dashboard are **v0.3.8**. Multi-receiver support requires rebuilding the relay container. Existing Windows clients and access keys remain compatible.
 
 ## Windows setup
 
@@ -85,3 +85,11 @@ Tests cover authentication/forwarding, portal controls/log sanitization, playbac
 ## Current scope
 
 One sender, one Windows receiver, up to two browser listeners. One-way audio only. System capture includes every application on the selected output. Live PCM uses WebSocket/TCP and can stall or drop stale frames on poor connections. No packaged installer, unattended updates or device hotplug recovery.
+
+## Multiple receivers (relay v0.3.8)
+
+One sender broadcasts live system/microphone audio and text announcements to up to 32 Windows receivers. Use the same relay URL and Receiver key on every receiving PC. Enable receiver audio on each PC that should play sound; disabled PCs remain connected and count in the portal but receive no audio or announcement commands.
+
+The portal shows connected receivers and how many have audio enabled. Browser listeners are counted separately. Each receiver has an independent bounded output queue, so a slow room cannot hold up other rooms. Recent audio is preferred over stale buffered audio; announcement commands retain FIFO order. New/reconnected receivers do not replay previous announcements. There is no cross-room playback synchronization or room targeting.
+
+Outgoing bandwidth and forwarded event counters count each receiver delivery separately. A command delivered to three PCs counts as one event received and three forwarded. Client diagnostics include a temporary receiver connection ID, which changes on reconnect. The sender remains limited to one connection.

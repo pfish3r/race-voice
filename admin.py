@@ -79,7 +79,7 @@ def make_handler(relay, password, origin):
                 code, cert = controller()
                 return self.reply(200, {"relay":relay.snapshot(), "certificate":cert,
                     "hostname":os.environ["RELAY_DOMAIN"], "port":int(os.getenv("PORT","8843")),
-                    "version":"0.3.7", "controller_available":code == 200})
+                    "version":"0.3.8", "controller_available":code == 200})
             self.reply(404, {"error":"Not found"})
         def do_POST(self):
             if not self.auth():

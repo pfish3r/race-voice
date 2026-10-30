@@ -86,3 +86,9 @@ Send Qualifying once. Match sender command_sent ID to receiver speech_queued, sp
 Test receiver locally exercises the same SAPI path without relay text transport. Open local logs opens the log/settings folder. Never share .env or settings.json with diagnostics.
 
 Older diagnostic builds may have left last-announcement.wav. Current builds do not use or update it.
+
+## Multiple receivers (relay/dashboard v0.3.8)
+
+Update the Linux relay and dashboard from the latest source, preserving .env and Docker volumes. Rebuild with sudo docker compose up -d --build relay from the deployment folder. No Windows update or new access keys are required. Set each listening PC to Receiver, use the existing Receiver key and enable receiver audio.
+
+The portal shows connected receiver count and enabled count, excluding browser listeners. All enabled receivers hear all broadcasts. Up to 32 receivers are supported. Audio and event forwarding totals now count individual deliveries across rooms.
