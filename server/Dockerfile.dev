@@ -1,0 +1,7 @@
+# Sandbox/dev image: installs relay dependencies only.
+# The repository is bind-mounted at /app by docker-compose.base44.yml, so source
+# edits are picked up without rebuilding this image.
+FROM python:3.12-slim
+WORKDIR /app
+COPY server/requirements.txt server/requirements.txt
+RUN pip install --no-cache-dir -r server/requirements.txt

@@ -1,0 +1,99 @@
+# Sandbox/dev stack for Race Voice — the Linux relay and its dashboard.
+# The Windows client (app.py) needs Windows audio/pywin32 and is not part of this stack.
+#
+# relay: relay.py (WebSocket relay) + admin.py dashboard HTTP server, from the
+#        bind-mounted working copy, so source edits need no rebuild.
+# proxy: plain-HTTP nginx on host port 3000 standing in for the production Caddy
+#        routes (Caddy's Let's Encrypt + GoDaddy DNS issuance cannot run here).
+name: race-voice
+
+services:
+  relay:
+    build:
+      context: .
+      dockerfile: server/Dockerfile.dev
+    working_dir: /app
+    command: ["python", "relay.py"]
+    volumes:
+      - .:/app
+    env_file:
+      - ./.env.base44-defaults
+      - /run/base44/app.env
+    environment:
+      HOST: 0.0.0.0
+      # 443 here mirrors the public port Windows clients use in production; the
+      # browser proxy forwards to it, so the dashboard's endpoint field is truthful.
+      PORT: "443"
+      # Display/origin only: the relay never validates the request Host header.
+      RELAY_DOMAIN: 3000-${BASE44_PUBLIC_HOST_SUFFIX:-localhost}
+      BASE44_PREVIEW_MODE:
+    healthcheck:
+      # Both ports served by the relay process: dashboard HTTP (expects 401 without
+      # admin credentials) and a real WebSocket handshake on the relay listener.
+      # A raw TCP probe would log a handshake traceback every interval, so do the
+      # handshake and close cleanly instead.
+      test:
+        - CMD-SHELL
+        - |
+          python - <<'PY'
+          import asyncio, socket, sys
+          from websockets.asyncio.client import connect
+
+          def dashboard():
+              s = socket.create_connection(("127.0.0.1", 8090), 3)
+              s.settimeout(3)
+              s.sendall(b"GET /admin HTTP/1.0\r\n\r\n")
+              ok = b"401" in s.recv(64)
+              s.close()
+              return ok
+
+          async def relay():
+              async with connect("ws://127.0.0.1:443", open_timeout=4) as ws:
+                  await ws.close()
+
+          if not dashboard():
+              sys.exit("dashboard HTTP did not answer with 401")
+          try:
+              asyncio.run(asyncio.wait_for(relay(), 8))
+          except Exception as error:
+              sys.exit("relay websocket handshake failed: %s" % error)
+          PY
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      start_period: 20s
+    restart: on-failure
+    labels:
+      base44.project: Race Voice relay
+      base44.kind: api
+
+  proxy:
+    image: nginx:alpine
+    ports:
+      - "3000:3000"
+    volumes:
+      - ./server/nginx-dev.conf:/etc/nginx/conf.d/default.conf:ro
+      - ./server/preview-index.html:/usr/share/nginx/html/index.html:ro
+    env_file:
+      - ./.env.base44-defaults
+      - /run/base44/app.env
+    depends_on:
+      relay:
+        condition: service_healthy
+    healthcheck:
+      # Proves the proxy reaches the authenticated dashboard, not just a live PID.
+      test:
+        - CMD-SHELL
+        - >-
+          wget -q -O /dev/null
+          --header="Authorization: Basic $$(printf 'admin:%s' "$$ADMIN_PASSWORD" | base64)"
+          http://127.0.0.1:3000/admin
+      interval: 15s
+      timeout: 8s
+      retries: 5
+      start_period: 10s
+    restart: on-failure
+    labels:
+      base44.project: Race Voice dashboard
+      base44.kind: web
+      base44.port: "3000"

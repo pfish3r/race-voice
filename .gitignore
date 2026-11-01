@@ -4,6 +4,7 @@ __pycache__/
 *.py[cod]
 .env*
 !.env.example
+!.env.base44-defaults
 build/
 dist/
 *.spec
